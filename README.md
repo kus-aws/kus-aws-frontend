@@ -235,12 +235,11 @@ npm run db:push
 - **배포 가이드 강화**: Amplify 수동 업로드 가이드 README에 통합, "Quick Deploy Checklist" 추가
 - **빌드 스크립트 보강**: Vite/esbuild를 node로 호출하여 권한 이슈 방지; `client/dist` 산출 확인
 - **헬퍼 제공**: `API_BASE` export 및 `health()`, `echo(q)` 헬퍼 추가 (`client/src/services/api.ts`)
+ - **상태 요약**: 주요 설정/가이드/헬퍼/체크리스트 완료. 배포 및 CORS 검증 단계만 남음.
 
 ### 남은 태스크
-- **VITE_API_BASE_URL 확정**: 실제 API Gateway Invoke URL로 `client/.env.production` 업데이트(스테이지 `/prod` 여부 반영)
-- **Amplify 수동 배포**: `npm run build` 후 `client/dist` 업로드, SPA 리라이트 `/* → /index.html (200)` 설정
-- **CORS 검증**: API Gateway/Lambda에 Amplify 도메인 Origin 허용
-- **프로덕션 헬스체크**: 배포 URL `/health`에서 200 확인(네트워크 탭으로 `/api/health` 경로 점검)
-- **선택: 호출 일원화**: ad-hoc `fetch`를 단계적으로 `apiService`로 통합
-- **선택: 품질 자동화**: CI에 빌드/린트/타입체크 추가, `ApiService` 테스트 작성
+- **VITE_API_BASE_URL 확정**: 실제 Invoke URL로 `client/.env.production` 설정(스테이지 `/prod` 포함 여부 반영)
+- **수동 배포/검증**: `npm run build` → `client/dist` 업로드 → SPA 리라이트 `/* → /index.html (200)` 설정 → `/health` 200 확인
+- **CORS 설정**: API Gateway/Lambda에 Amplify 도메인 Origin 허용
+- **선택**: ad-hoc `fetch` 통합(`apiService`), CI에 빌드/린트/타입체크 추가 및 `ApiService` 테스트
 
