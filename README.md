@@ -96,7 +96,7 @@ npm run dev
 - 전체 빌드
 ```
 npm run build
-# 결과물: dist/public (정적 파일), dist/index.js (서버)
+# 결과물: dist/public (정적 파일), dist/index.js (서버), client/dist (클라이언트 단독 배포용)
 ```
 
 - 프로덕션 실행
@@ -104,11 +104,43 @@ npm run build
 npm start
 ```
 
-- Amplify Hosting(수동 업로드)로 프런트만 배포하려면:
+### Amplify Hosting(수동 업로드) 가이드
+
+1) Vite 환경변수 설정 (API 베이스)
+
+- `client/` 아래 환경 파일 생성
 ```
-npm run build:client
-# 업로드 대상: client/dist
+client/.env.local
+VITE_API_BASE_URL=http://localhost:8000
+
+client/.env.production
+VITE_API_BASE_URL=https://<api-id>.execute-api.us-east-1.amazonaws.com/prod
 ```
+- 주의: 이 파일들은 커밋하지 않습니다(`.gitignore`에 `.env*` 포함).
+- 끝에 슬래시는 붙이지 않습니다.
+
+2) 빌드 실행(루트에서)
+```
+npm i
+npm run build
+# 산출물: dist/public, dist/index.js, client/dist
+```
+
+3) Amplify Hosting 수동 업로드
+- Amplify 콘솔 → Hosting → Deploy without Git → Drag & drop
+- 폴더 `client/dist` 를 업로드 대상로 지정
+- SPA 라우팅이 필요하면 커스텀 리라이트/헤더 추가:
+```
+/* 200
+```
+
+4) API CORS 확인
+- API Gateway/Lambda 응답에서 Amplify 도메인을 허용 Origin 으로 설정
+
+5) 트러블슈팅
+- 새로고침 403/404: 위 SPA rewrite 규칙 적용
+- CORS 에러: `VITE_API_BASE_URL`과 백엔드 CORS 설정 재확인
+- 프런트는 설정된 베이스 아래 `/api/*` 경로로 호출
 
 ## 디렉토리 구조
 ```
