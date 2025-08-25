@@ -114,7 +114,9 @@ client/.env.local
 VITE_API_BASE_URL=http://localhost:8000
 
 client/.env.production
-VITE_API_BASE_URL=https://<api-id>.execute-api.us-east-1.amazonaws.com/prod
+VITE_API_BASE_URL=https://{api-id}.execute-api.{region}.amazonaws.com
+# 스테이지가 prod인 경우, 끝에 "/prod"를 붙이세요 (마지막 슬래시 없이)
+# 예) https://xxxx.execute-api.us-east-1.amazonaws.com/prod
 ```
 - 주의: 이 파일들은 커밋하지 않습니다(`.gitignore`에 `.env*` 포함).
 - 끝에 슬래시는 붙이지 않습니다.
@@ -130,12 +132,12 @@ npm run build
 - Amplify 콘솔 → Hosting → Deploy without Git → Drag & drop
 - 폴더 `client/dist` 를 업로드 대상로 지정
 - SPA 라우팅이 필요하면 커스텀 리라이트/헤더 추가:
-```
-/* 200
-```
+  - SPA rewrite: `/* → /index.html (200)`
 
-4) API CORS 확인
+4) 배포 검증 및 CORS 확인
 - API Gateway/Lambda 응답에서 Amplify 도메인을 허용 Origin 으로 설정
+ - 배포 후 브라우저 네트워크 탭으로 `/health` 요청이 200인지 확인
+ - 주의: Vite는 빌드 타임 치환을 사용하므로 API URL을 변경하면 재빌드 필요
 
 5) 트러블슈팅
 - 새로고침 403/404: 위 SPA rewrite 규칙 적용
