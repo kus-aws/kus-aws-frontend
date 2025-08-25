@@ -23,12 +23,19 @@ Vite(React/TS) + Express(WS) + Drizzle 기반의 프런트엔드 애플리케이
 
 ### 아키텍처(프런트 관점)
 ```mermaid
-flowchart LR
-  U[User] --> FE[React (Vite)]
-  FE -->|HTTP| APIG[(API Gateway)]
-  APIG --> LBD[(Lambda)]
-  LBD --> DDB[(DynamoDB)]
-  LBD --> S3[(S3 Upload via Presign)]
+graph LR
+  U["User"]
+  FE["React (Vite)"]
+  APIG["API Gateway"]
+  LBD["Lambda"]
+  DDB["DynamoDB"]
+  S3["S3 (Presigned Upload)"]
+
+  U --> FE
+  FE --> APIG
+  APIG --> LBD
+  LBD --> DDB
+  LBD --> S3
 ```
 
 ### 보안/운영 메모
