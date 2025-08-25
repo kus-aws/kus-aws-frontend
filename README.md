@@ -155,6 +155,12 @@ npm run build
 - 배포 URL에서 `/health` 페이지로 200 응답 확인
 - 필요 시 CORS에 Amplify 도메인 Origin 허용
 
+### Environment templates
+- `client/env.production.example`: prod 스테이지 주석 포함
+- `client/env.staging.example`: staging 스테이지 주석 포함
+- `client/env.qa.example`: qa 스테이지 주석 포함
+- 공통 규칙: 마지막 슬래시 금지, 실제 사용 파일은 `.env.*`로 복사 후 커밋 금지
+
 ## 디렉토리 구조
 ```
 kus-aws-frontend/
