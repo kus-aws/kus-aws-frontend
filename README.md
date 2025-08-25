@@ -213,3 +213,20 @@ npm run db:push
   - 서버 `PORT` 변경 또는 프런트 Vite 개발 서버 포트 지정
 - API CORS:
   - 백엔드(또는 API Gateway)에서 Origin을 Amplify 도메인으로 허용
+
+## 현재 진행 상태 (woo)
+- **API 베이스 일원화**: `VITE_API_BASE_URL`로 통합, 기본값 `http://localhost:8000`
+- **환경파일/보안**: `.gitignore`에 `.env*`, `client/.env*` 추가; 로컬/프로덕션 예시 제공
+- **API 서비스 점검**: `client/src/services/api.ts`가 `import.meta.env.VITE_API_BASE_URL` 사용
+- **헬스체크 UI 추가**: `/health` 라우트에서 `/api/health` 호출 테스트 가능
+- **배포 가이드 통합**: Amplify 수동 업로드 가이드 `README.md`로 병합 (`README_DEPLOY.md` 제거)
+- **빌드 스크립트 보강**: 권한 이슈 회피를 위해 Vite/esbuild를 node로 호출; `client/dist` 산출
+
+### 남은 태스크
+- **VITE_API_BASE_URL 확정**: 실제 API Gateway Invoke URL로 `client/.env.production` 업데이트
+- **Amplify 수동 배포**: `client/dist` 업로드 및 SPA 리라이트 규칙(`/* 200`) 설정
+- **CORS 검증**: API Gateway/Lambda에서 Amplify 도메인 Origin 허용 확인
+- **헬스체크 검증**: 개발/프로덕션 환경에서 `/health` 응답 확인
+- **선택: API 호출 통합**: ad-hoc `fetch` 호출을 점진적으로 `apiService` 기반으로 통합
+- **선택: CI/품질**: 빌드/린트/타입체크 워크플로 도입, `ApiService` 단위 테스트 추가
+
