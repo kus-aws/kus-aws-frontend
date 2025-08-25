@@ -234,6 +234,7 @@ npm run db:push
 - **헬스체크 UI 추가**: `/health` 라우트에서 `/api/health` 호출 테스트 가능(베이스 URL 표시)
 - **배포 가이드 강화**: Amplify 수동 업로드 가이드 README에 통합, "Quick Deploy Checklist" 추가
 - **빌드 스크립트 보강**: Vite/esbuild를 node로 호출하여 권한 이슈 방지; `client/dist` 산출 확인
+- **헬퍼 제공**: `API_BASE` export 및 `health()`, `echo(q)` 헬퍼 추가 (`client/src/services/api.ts`)
 
 ### 남은 태스크
 - **VITE_API_BASE_URL 확정**: 실제 API Gateway Invoke URL로 `client/.env.production` 업데이트(스테이지 `/prod` 여부 반영)
