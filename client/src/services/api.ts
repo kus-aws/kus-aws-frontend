@@ -1,5 +1,7 @@
 import { ChatRequest, ChatResponse, FeedbackRequest, HealthResponse, MajorCategory } from "@shared/schema";
 
+export const API_BASE: string = (import.meta.env.VITE_API_BASE_URL as string) || "http://localhost:8000";
+
 class ApiError extends Error {
   constructor(
     message: string,
@@ -17,7 +19,7 @@ class ApiService {
   private retryDelay = 1000;
 
   constructor() {
-    this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+    this.baseUrl = API_BASE;
   }
 
   private async makeRequest<T>(
@@ -145,3 +147,17 @@ class ApiService {
 
 export const apiService = new ApiService();
 export { ApiError };
+
+export async function health(): Promise<HealthResponse> {
+  return apiService.checkHealth();
+}
+
+export async function echo(query: string): Promise<any> {
+  const url = `${API_BASE}/api/echo?q=${encodeURIComponent(query)}`;
+  const res = await fetch(url, { headers: { "Content-Type": "application/json" } });
+  if (!res.ok) {
+    const text = (await res.text()) || res.statusText;
+    throw new ApiError(`${res.status}: ${text}`, res.status);
+  }
+  return res.json();
+}
