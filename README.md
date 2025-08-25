@@ -193,6 +193,47 @@ npm run build
 - CORS 에러: 백엔드 Allowed Origin에 Amplify 도메인 포함 여부 확인
 - API 4xx/5xx: API Gateway/CloudWatch 로그로 상세 원인 확인, 프런트 Network 탭 메시지 참조
 
+### 운영자 수행 체크리스트 (당신이 할 일)
+1) Invoke URL/스테이지 확정 [필수]
+   - $default: `https://{api-id}.execute-api.{region}.amazonaws.com`
+   - prod:     `https://{api-id}.execute-api.{region}.amazonaws.com/prod`
+   - 규칙: 마지막 슬래시 금지
+
+2) `.env.production` 작성 [필수]
+```
+# $default 스테이지 예시
+VITE_API_BASE_URL=https://{api-id}.execute-api.{region}.amazonaws.com
+
+# prod 스테이지 예시(끝에 /prod, 마지막 슬래시 금지)
+# VITE_API_BASE_URL=https://{api-id}.execute-api.{region}.amazonaws.com/prod
+```
+   - 위치: `client/.env.production` (커밋 금지, `.gitignore` 적용됨)
+
+3) 빌드 [필수]
+```
+npm ci || npm i
+npm run build
+```
+   - 업로드 대상: `client/dist`
+
+4) Amplify 업로드/설정 [필수]
+   - 콘솔 → Hosting → Deploy without Git → `client/dist` 드래그&드롭
+   - Rewrites & redirects 추가: `/*  /index.html  200`
+
+5) 배포 검증 [필수]
+   - 배포 URL 접속 → `/health` 페이지 버튼 클릭 → HTTP 200 확인
+   - DevTools Network에서 `/api/health`가 `.env.production`의 `VITE_API_BASE_URL` 기준으로 호출되는지 확인
+
+6) CORS 설정(백엔드) [필수]
+   - API Gateway/Lambda Allowed Origin에 Amplify 도메인만 허용 권장
+   - 프리플라이트(OPTIONS) 및 필요한 헤더(`Content-Type` 등) 허용
+
+7) 변경 반영 [필수]
+   - API URL 변경 시 매번 `npm run build` 재실행 후 재업로드
+
+8) 문제 발생 시 [선택]
+   - 아래 Troubleshooting 섹션 순서대로 점검(Rewrite → CORS → API 응답)
+
 ### Environment templates
 - `client/env.production.example`: prod 스테이지 주석 포함
 - `client/env.staging.example`: staging 스테이지 주석 포함
