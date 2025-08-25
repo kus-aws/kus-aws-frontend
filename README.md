@@ -229,17 +229,17 @@ npm run db:push
 
 ## 현재 진행 상태 (woo)
 - **API 베이스 일원화**: `VITE_API_BASE_URL`로 통합, 기본값 `http://localhost:8000`
-- **환경파일/보안**: `.gitignore`에 `.env*`, `client/.env*` 추가; 로컬/프로덕션 예시 제공
+- **환경파일/보안**: `.gitignore`에 `.env*`, `client/.env*` 추가; 샘플 `client/env.production.example` 제공
 - **API 서비스 점검**: `client/src/services/api.ts`가 `import.meta.env.VITE_API_BASE_URL` 사용
-- **헬스체크 UI 추가**: `/health` 라우트에서 `/api/health` 호출 테스트 가능
-- **배포 가이드 통합**: Amplify 수동 업로드 가이드 `README.md`로 병합 (`README_DEPLOY.md` 제거)
-- **빌드 스크립트 보강**: 권한 이슈 회피를 위해 Vite/esbuild를 node로 호출; `client/dist` 산출
+- **헬스체크 UI 추가**: `/health` 라우트에서 `/api/health` 호출 테스트 가능(베이스 URL 표시)
+- **배포 가이드 강화**: Amplify 수동 업로드 가이드 README에 통합, "Quick Deploy Checklist" 추가
+- **빌드 스크립트 보강**: Vite/esbuild를 node로 호출하여 권한 이슈 방지; `client/dist` 산출 확인
 
 ### 남은 태스크
-- **VITE_API_BASE_URL 확정**: 실제 API Gateway Invoke URL로 `client/.env.production` 업데이트
-- **Amplify 수동 배포**: `client/dist` 업로드 및 SPA 리라이트 규칙(`/* 200`) 설정
-- **CORS 검증**: API Gateway/Lambda에서 Amplify 도메인 Origin 허용 확인
-- **헬스체크 검증**: 개발/프로덕션 환경에서 `/health` 응답 확인
-- **선택: API 호출 통합**: ad-hoc `fetch` 호출을 점진적으로 `apiService` 기반으로 통합
-- **선택: CI/품질**: 빌드/린트/타입체크 워크플로 도입, `ApiService` 단위 테스트 추가
+- **VITE_API_BASE_URL 확정**: 실제 API Gateway Invoke URL로 `client/.env.production` 업데이트(스테이지 `/prod` 여부 반영)
+- **Amplify 수동 배포**: `npm run build` 후 `client/dist` 업로드, SPA 리라이트 `/* → /index.html (200)` 설정
+- **CORS 검증**: API Gateway/Lambda에 Amplify 도메인 Origin 허용
+- **프로덕션 헬스체크**: 배포 URL `/health`에서 200 확인(네트워크 탭으로 `/api/health` 경로 점검)
+- **선택: 호출 일원화**: ad-hoc `fetch`를 단계적으로 `apiService`로 통합
+- **선택: 품질 자동화**: CI에 빌드/린트/타입체크 추가, `ApiService` 테스트 작성
 
