@@ -145,6 +145,16 @@ npm run build
 - CORS 에러: `VITE_API_BASE_URL`과 백엔드 CORS 설정 재확인
 - 프런트는 설정된 베이스 아래 `/api/*` 경로로 호출
 
+### Quick Deploy Checklist
+- `client/.env.production` 설정:
+  - 스테이지 없음: `VITE_API_BASE_URL=https://{api-id}.execute-api.{region}.amazonaws.com`
+  - 스테이지 prod: `...amazonaws.com/prod` (끝에 슬래시 없이)
+- `npm run build` 실행 → 업로드 대상: `client/dist`
+- Amplify Hosting 콘솔 업로드(Drag & Drop)
+- SPA rewrite 규칙 추가: `/* → /index.html (200)`
+- 배포 URL에서 `/health` 페이지로 200 응답 확인
+- 필요 시 CORS에 Amplify 도메인 Origin 허용
+
 ## 디렉토리 구조
 ```
 kus-aws-frontend/
