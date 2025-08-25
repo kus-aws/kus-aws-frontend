@@ -3,6 +3,45 @@
 Vite(React/TS) + Express(WS) + Drizzle 기반의 프런트엔드 애플리케이션(풀스택 개발 모드 포함)입니다.
 프런트는 `client/`, 서버 런타임은 `server/`, 공용 타입/스키마는 `shared/`에 위치합니다.
 
+## 서비스 개요
+- **무엇**: 개발자/비개발자 모두를 위한 AI Q&A Web App의 프런트엔드.
+- **왜**: 팀 내 축적된 지식/문서/파일을 빠르게 검색·대화형으로 활용하기 위함.
+- **어떻게**: API Gateway → Lambda → DynamoDB(+S3) 백엔드와 통신하여, 세션·메시지·업로드를 처리하고 UI는 React + Tailwind로 경량 제공.
+
+### 주요 기능
+- **대화 세션 관리**: 세션 생성/제목 수정, 최신순 목록 조회
+- **메시지 타임라인**: `/sessions/{sessionId}/messages` 스트림 조회 및 전송
+- **파일 업로드**: S3 Presigned URL 기반 업로드(대용량 지원)
+- **검색/템플릿**: 카테고리/템플릿 기반 프롬프트 가이드(예: `client/src/pages` 및 `components/*`)
+- **접근성/테마**: 다크모드, 키보드 내비게이션, 폰트 사이즈 패널 등
+
+### 사용자 흐름(요약)
+1) 사용자가 홈에서 카테고리/템플릿 선택 또는 자유 입력으로 질문
+2) 백엔드 API 호출로 세션 생성/메시지 저장
+3) UI는 실시간 타임라인을 렌더링하고, 필요 시 파일을 S3로 업로드(사전 presign)
+4) 과거 세션은 최신순으로 탐색하고 재개
+
+### 아키텍처(프런트 관점)
+```mermaid
+flowchart LR
+  U[User] --> FE[React (Vite)]
+  FE -->|HTTP| APIG[(API Gateway)]
+  APIG --> LBD[(Lambda)]
+  LBD --> DDB[(DynamoDB)]
+  LBD --> S3[(S3 Upload via Presign)]
+```
+
+### 보안/운영 메모
+- 프런트 빌드 산출물은 Amplify Hosting에 **수동 업로드**로 배포
+- API 베이스 URL은 환경변수 `VITE_API_BASE_URL`로 주입
+- CORS는 백엔드(API Gateway/Lambda)에서 Amplify 도메인만 허용하도록 제한 권장
+- 개인 키/시크릿은 코드/프런트 번들에 포함 금지
+
+### 로드맵(예시)
+- 채팅 답변 스트리밍(서버센트 이벤트/웹소켓) UI
+- 세션 공유/태깅, 즐겨찾기, 검색 하이라이트
+- 접근성 레벨 업(ARIA), 성능 측정(LCP/INP), 번역 i18n
+
 ## Requirements
 - Node.js ≥ 18 (LTS 권장)
 - npm ≥ 9
