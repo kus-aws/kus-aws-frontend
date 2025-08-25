@@ -155,6 +155,44 @@ npm run build
 - 배포 URL에서 `/health` 페이지로 200 응답 확인
 - 필요 시 CORS에 Amplify 도메인 Origin 허용
 
+### Step-by-step Deploy (복붙 가이드)
+1) API URL 설정
+```
+# $default 스테이지(끝에 슬래시 금지)
+printf "VITE_API_BASE_URL=https://{api-id}.execute-api.{region}.amazonaws.com\n" > client/.env.production
+
+# prod 스테이지인 경우(끝에 슬래시 금지)
+# printf "VITE_API_BASE_URL=https://{api-id}.execute-api.{region}.amazonaws.com/prod\n" > client/.env.production
+```
+
+2) 빌드
+```
+npm ci || npm i
+npm run build
+```
+
+3) 업로드(Amplify 콘솔)
+- Hosting → Deploy without Git → `client/dist` 폴더 드래그&드롭
+- Rewrites & redirects에 추가:
+```
+/*  /index.html  200
+```
+
+4) 검증
+- 배포 URL 접속 → `/health` 페이지 버튼 클릭 → 200 확인
+- 브라우저 DevTools → Network → `/api/health` 요청이 `.env.production`의 `VITE_API_BASE_URL` 기준으로 나가는지 확인
+
+5) CORS 설정(백엔드)
+- API Gateway/Lambda에서 Allowed Origin에 Amplify 배포 도메인만 허용 권장
+
+6) 변경 시 재빌드
+- `VITE_API_BASE_URL` 변경 시 반드시 `npm run build` 재실행 후 재업로드
+
+### Troubleshooting (요약)
+- 새로고침 403/404: SPA rewrite 규칙 `/* → /index.html (200)` 추가
+- CORS 에러: 백엔드 Allowed Origin에 Amplify 도메인 포함 여부 확인
+- API 4xx/5xx: API Gateway/CloudWatch 로그로 상세 원인 확인, 프런트 Network 탭 메시지 참조
+
 ### Environment templates
 - `client/env.production.example`: prod 스테이지 주석 포함
 - `client/env.staging.example`: staging 스테이지 주석 포함
