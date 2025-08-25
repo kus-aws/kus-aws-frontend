@@ -10,6 +10,7 @@ const Home = lazy(() => import("./pages/home"));
 const Categories = lazy(() => import("./pages/categories"));
 const Chat = lazy(() => import("./pages/chat"));
 const NotFound = lazy(() => import("./pages/not-found"));
+const Health = lazy(() => import("./pages/health"));
 
 function Router() {
   return (
@@ -18,6 +19,7 @@ function Router() {
       <Route path="/categories" component={Categories} />
       <Route path="/categories/:majorId" component={Categories} />
       <Route path="/chat/:majorId/:subId" component={Chat} />
+      <Route path="/health" component={Health} />
       <Route component={NotFound} />
     </Switch>
   );
