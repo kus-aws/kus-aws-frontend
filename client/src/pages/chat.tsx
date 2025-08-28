@@ -11,6 +11,8 @@ import { TypingAnimation } from "@/components/TypingAnimation";
 import { MessageFeedback } from "@/components/MessageFeedback";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { FollowupChips } from "@/components/FollowupChips";
+import { StreamingMessage, TutorState } from "@/components/StreamingMessage";
+import { connectStream, fetchSuggestions } from "@/lib/streaming";
 import { apiService, ApiError } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
 import { useToast } from "@/hooks/use-toast";
@@ -77,6 +79,16 @@ export default function Chat() {
   });
   const [inputMessage, setInputMessage] = useState("");
   const [currentTypingMessage, setCurrentTypingMessage] = useState<string | null>(null);
+  
+  // SSE 스트리밍 상태
+  const [tutorState, setTutorState] = useState<TutorState>({
+    conversationId: `session-${Date.now()}`,
+    answer: "",
+    isStreaming: false,
+    suggestions: [],
+    isLoadingSuggestions: false,
+  });
+  const [streamCleanup, setStreamCleanup] = useState<(() => void) | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [bookmarkOpen, setBookmarkOpen] = useState(false);
   // const [fileUploadOpen, setFileUploadOpen] = useState(false);"}
@@ -127,19 +139,19 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const handleSendMessage = async () => {
-    if (!inputMessage.trim() || chatApi.loading || chatState.isTyping) return;
+  const handleSendMessage = async (messageContent?: string) => {
+    const message = messageContent || inputMessage.trim();
+    if (!message || tutorState.isStreaming) return;
     if (!params?.majorId || !params?.subId) return;
 
-    const messageContent = inputMessage.trim();
     const userMessage: EnhancedMessage = {
       id: `user-${Date.now()}`,
-      content: messageContent,
+      content: message,
       sender: "user",
       timestamp: new Date(),
     };
 
-    // Add user message immediately and clear last AI message ID
+    // Add user message and reset states
     setChatState(prev => ({
       ...prev,
       messages: [...prev.messages, userMessage],
@@ -147,66 +159,91 @@ export default function Chat() {
       lastAIMessageId: null,
     }));
 
-    setInputMessage("");
-
-    try {
-      const chatRequest: ChatRequest = {
-        message: messageContent,
-        majorCategory: params.majorId,
-        subCategory: params.subId,
-        sessionId: chatState.sessionId,
-        suggestCount: 3,
-        followupMode: "multi",
-      };
-
-      const response = await chatApi.execute(
-        () => apiService.sendChatMessage(chatRequest),
-        {
-          onSuccess: (data) => {
-            // Start typing animation
-            setChatState(prev => ({ ...prev, isTyping: true }));
-            setCurrentTypingMessage(data.content);
-          },
-          onError: (error) => {
-            const errorMessage = error.message || "알 수 없는 오류가 발생했습니다.";
-            toast({
-              title: "메시지 전송 실패",
-              description: errorMessage,
-              variant: "destructive",
-            });
-            
-            // Add error message to chat
-            const systemErrorMessage: EnhancedMessage = {
-              id: `system-error-${Date.now()}`,
-              content: `오류: ${errorMessage}`,
-              sender: "system",
-              timestamp: new Date(),
-            };
-            
-            setChatState(prev => ({
-              ...prev,
-              messages: [...prev.messages, systemErrorMessage],
-              error: errorMessage,
-            }));
-          }
-        }
-      );
-
-      // The AI message will be added when typing animation completes
-    } catch (error) {
-      // Error already handled by useApi hook
-      const errorMessage: EnhancedMessage = {
-        id: `system-error-${Date.now()}`,
-        content: "메시지 전송에 실패했습니다. 다시 시도해주세요.",
-        sender: "system",
-        timestamp: new Date(),
-      };
-
-      setChatState(prev => ({
-        ...prev,
-        messages: [...prev.messages, errorMessage],
-      }));
+    // Clear input if using input field
+    if (!messageContent) {
+      setInputMessage("");
     }
+
+    // Reset tutor state for new streaming
+    setTutorState(prev => ({
+      ...prev,
+      answer: "",
+      isStreaming: false,
+      suggestions: [],
+      isLoadingSuggestions: false,
+      streamError: undefined,
+      suggestionsError: undefined,
+    }));
+
+    // Cleanup previous stream if exists
+    if (streamCleanup) {
+      streamCleanup();
+      setStreamCleanup(null);
+    }
+
+    // Start SSE streaming
+    const cleanup = connectStream({
+      baseUrl: import.meta.env.VITE_API_BASE_URL || "",
+      q: message,
+      major: params.majorId,
+      subField: params.subId,
+      conversationId: tutorState.conversationId,
+      
+      onStart: (cid) => {
+        setTutorState(prev => ({
+          ...prev,
+          conversationId: cid,
+          isStreaming: true,
+        }));
+      },
+      
+      onDelta: (text) => {
+        setTutorState(prev => ({
+          ...prev,
+          answer: prev.answer + text,
+        }));
+      },
+      
+      onDone: () => {
+        setTutorState(prev => ({ ...prev, isStreaming: false }));
+        
+        // Add AI message to chat history
+        setTimeout(() => {
+          const currentAnswer = tutorState.answer;
+          const aiMessage: EnhancedMessage = {
+            id: `ai-${Date.now()}`,
+            content: currentAnswer,
+            sender: "ai",
+            timestamp: new Date(),
+          };
+          
+          setChatState(prev => ({
+            ...prev,
+            messages: [...prev.messages, aiMessage],
+            lastAIMessageId: aiMessage.id,
+          }));
+          
+          // Load suggestions
+          loadSuggestions();
+        }, 100);
+      },
+      
+      onError: (error) => {
+        setTutorState(prev => ({
+          ...prev,
+          isStreaming: false,
+          streamError: error,
+        }));
+        
+        toast({
+          title: "연결 오류",
+          description: error,
+          variant: "destructive",
+        });
+      },
+    });
+    
+    setStreamCleanup(() => cleanup);
   };
 
   const handleTypingComplete = () => {
@@ -240,13 +277,25 @@ export default function Chat() {
         timestamp: new Date(),
       };
 
+      const newSessionId = `session-${Date.now()}`;
       setChatState({
         messages: [welcomeMessage],
-        sessionId: `session-${Date.now()}`,
+        sessionId: newSessionId,
         isTyping: false,
         error: null,
         lastAIMessageId: null,
       });
+      
+      setTutorState(prev => ({
+        ...prev,
+        conversationId: newSessionId,
+        answer: "",
+        isStreaming: false,
+        suggestions: [],
+        isLoadingSuggestions: false,
+        streamError: undefined,
+        suggestionsError: undefined,
+      }));
       
       setCurrentTypingMessage(null);
       chatApi.reset();
@@ -272,55 +321,51 @@ export default function Chat() {
     setInputMessage(question);
   };
 
-  const handleFollowupQuestion = async (question: string) => {
-    if (chatApi.loading || chatState.isTyping) return;
-    if (!params?.majorId || !params?.subId) return;
-
-    const userMessage: EnhancedMessage = {
-      id: `user-${Date.now()}`,
-      content: question,
-      sender: "user",
-      timestamp: new Date(),
-    };
-
-    // Add user message immediately and clear last AI message ID
-    setChatState(prev => ({
-      ...prev,
-      messages: [...prev.messages, userMessage],
-      error: null,
-      lastAIMessageId: null,
-    }));
-
+  const loadSuggestions = async () => {
+    setTutorState(prev => ({ ...prev, isLoadingSuggestions: true }));
+    
     try {
-      const chatRequest: ChatRequest = {
-        message: question,
-        majorCategory: params.majorId,
-        subCategory: params.subId,
-        sessionId: chatState.sessionId,
-        suggestCount: 3,
-        followupMode: "multi",
-      };
-
-      await chatApi.execute(
-        () => apiService.sendChatMessage(chatRequest),
+      const suggestions = await fetchSuggestions(
+        import.meta.env.VITE_API_BASE_URL || "",
         {
-          onSuccess: (data) => {
-            setChatState(prev => ({ ...prev, isTyping: true }));
-            setCurrentTypingMessage(data.content);
-          },
-          onError: (error) => {
-            const errorMessage = error.message || "알 수 없는 오류가 발생했습니다.";
-            toast({
-              title: "메시지 전송 실패",
-              description: errorMessage,
-              variant: "destructive",
-            });
-          }
+          conversationId: tutorState.conversationId,
+          major: params?.majorId || "",
+          subField: params?.subId || "",
+          suggestCount: 3,
         }
       );
-    } catch (error) {
-      // Error handling already done by useApi hook
+      
+      setTutorState(prev => ({
+        ...prev,
+        suggestions,
+        isLoadingSuggestions: false,
+      }));
+    } catch (error: any) {
+      setTutorState(prev => ({
+        ...prev,
+        isLoadingSuggestions: false,
+        suggestionsError: error.message,
+      }));
     }
+  };
+  
+  const handleSuggestionClick = (suggestion: string) => {
+    handleSendMessage(suggestion);
+  };
+  
+  const handleRetryStream = () => {
+    if (chatState.messages.length > 0) {
+      const lastUserMessage = [...chatState.messages]
+        .reverse()
+        .find(msg => msg.sender === 'user');
+      if (lastUserMessage) {
+        handleSendMessage(lastUserMessage.content);
+      }
+    }
+  };
+  
+  const handleRetrySuggestions = () => {
+    loadSuggestions();
   };
 
   const handleBookmarkMessage = (message: EnhancedMessage) => {
@@ -351,7 +396,7 @@ export default function Chat() {
       // Ctrl/Cmd + Enter to send message
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        if (inputMessage.trim() && !chatApi.loading && !chatState.isTyping) {
+        if (inputMessage.trim() && !tutorState.isStreaming) {
           handleSendMessage();
         }
       }
@@ -372,7 +417,7 @@ export default function Chat() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [inputMessage, chatApi.loading, chatState.isTyping]);
+  }, [inputMessage, tutorState.isStreaming]);
 
   const formatProcessingTime = (ms?: number) => {
     if (!ms) return '';
@@ -567,16 +612,14 @@ export default function Chat() {
                 </div>
               )}
               
-              {/* Loading State */}
-              {chatApi.loading && !chatState.isTyping && (
-                <div className="flex justify-start">
-                  <div className="bg-gray-100 text-gray-800 px-4 py-2 rounded-lg flex items-center space-x-3 min-w-[250px]">
-                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                    <div className="flex-1">
-                      <LoadingMessage />
-                    </div>
-                  </div>
-                </div>
+              {/* SSE Streaming Message */}
+              {(tutorState.isStreaming || tutorState.answer || tutorState.streamError) && (
+                <StreamingMessage
+                  state={tutorState}
+                  onSuggestionClick={handleSuggestionClick}
+                  onRetryStream={handleRetryStream}
+                  onRetrySuggestions={handleRetrySuggestions}
+                />
               )}
               
               {/* Error State */}
@@ -604,16 +647,16 @@ export default function Chat() {
                 onKeyPress={handleKeyPress}
                 placeholder="궁금한 것을 질문해보세요..."
                 className="flex-1"
-                disabled={chatApi.loading || chatState.isTyping}
+                disabled={tutorState.isStreaming}
                 data-testid="input-message"
               />
               <Button
-                onClick={handleSendMessage}
-                disabled={!inputMessage.trim() || chatApi.loading || chatState.isTyping}
+                onClick={() => handleSendMessage()}
+                disabled={!inputMessage.trim() || tutorState.isStreaming}
                 className="bg-primary text-white"
                 data-testid="button-send"
               >
-                {chatApi.loading ? (
+                {tutorState.isStreaming ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Send className="w-4 h-4" />
