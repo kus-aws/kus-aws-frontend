@@ -10,9 +10,20 @@ import { ChatRequest } from "@/services/api";
 import { TypingAnimation } from "@/components/TypingAnimation";
 import { MessageFeedback } from "@/components/MessageFeedback";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
+import { FollowupChips } from "@/components/FollowupChips";
 import { apiService, ApiError } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
 import { useToast } from "@/hooks/use-toast";
+// Define message interface
+interface EnhancedMessage {
+  id: string;
+  content: string;
+  sender: "user" | "ai" | "system";
+  timestamp: Date;
+  processingTime?: number;
+  suggestions?: string[];
+}
+
 // import { SmartMessageContent } from "@/components/SmartMessageContent";
 // import { QuestionTemplates } from "@/components/QuestionTemplates";
 // import { ChatSearch } from "@/components/ChatSearch";
@@ -51,6 +62,7 @@ interface ChatState {
   sessionId: string;
   isTyping: boolean;
   error: string | null;
+  lastAIMessageId: string | null;
 }
 
 export default function Chat() {
@@ -61,6 +73,7 @@ export default function Chat() {
     sessionId: `session-${Date.now()}`,
     isTyping: false,
     error: null,
+    lastAIMessageId: null,
   });
   const [inputMessage, setInputMessage] = useState("");
   const [currentTypingMessage, setCurrentTypingMessage] = useState<string | null>(null);
@@ -101,6 +114,7 @@ export default function Chat() {
         ...prev,
         messages: [welcomeMessage],
         error: null,
+        lastAIMessageId: null,
       }));
     }
   }, [params?.majorId, params?.subId, majorCategory, subCategory]);
@@ -125,11 +139,12 @@ export default function Chat() {
       timestamp: new Date(),
     };
 
-    // Add user message immediately
+    // Add user message immediately and clear last AI message ID
     setChatState(prev => ({
       ...prev,
       messages: [...prev.messages, userMessage],
       error: null,
+      lastAIMessageId: null,
     }));
 
     setInputMessage("");
@@ -140,6 +155,8 @@ export default function Chat() {
         majorCategory: params.majorId,
         subCategory: params.subId,
         sessionId: chatState.sessionId,
+        suggestCount: 3,
+        followupMode: "multi",
       };
 
       const response = await chatApi.execute(
@@ -200,12 +217,14 @@ export default function Chat() {
         sender: "ai",
         timestamp: new Date(chatApi.data.timestamp),
         processingTime: chatApi.data.processingTime,
+        suggestions: chatApi.data.suggestions,
       };
 
       setChatState(prev => ({
         ...prev,
         messages: [...prev.messages, aiMessage],
         isTyping: false,
+        lastAIMessageId: aiMessage.id,
       }));
       
       setCurrentTypingMessage(null);
@@ -226,6 +245,7 @@ export default function Chat() {
         sessionId: `session-${Date.now()}`,
         isTyping: false,
         error: null,
+        lastAIMessageId: null,
       });
       
       setCurrentTypingMessage(null);
@@ -250,6 +270,57 @@ export default function Chat() {
 
   const handleSampleQuestion = (question: string) => {
     setInputMessage(question);
+  };
+
+  const handleFollowupQuestion = async (question: string) => {
+    if (chatApi.loading || chatState.isTyping) return;
+    if (!params?.majorId || !params?.subId) return;
+
+    const userMessage: EnhancedMessage = {
+      id: `user-${Date.now()}`,
+      content: question,
+      sender: "user",
+      timestamp: new Date(),
+    };
+
+    // Add user message immediately and clear last AI message ID
+    setChatState(prev => ({
+      ...prev,
+      messages: [...prev.messages, userMessage],
+      error: null,
+      lastAIMessageId: null,
+    }));
+
+    try {
+      const chatRequest: ChatRequest = {
+        message: question,
+        majorCategory: params.majorId,
+        subCategory: params.subId,
+        sessionId: chatState.sessionId,
+        suggestCount: 3,
+        followupMode: "multi",
+      };
+
+      await chatApi.execute(
+        () => apiService.sendChatMessage(chatRequest),
+        {
+          onSuccess: (data) => {
+            setChatState(prev => ({ ...prev, isTyping: true }));
+            setCurrentTypingMessage(data.content);
+          },
+          onError: (error) => {
+            const errorMessage = error.message || "알 수 없는 오류가 발생했습니다.";
+            toast({
+              title: "메시지 전송 실패",
+              description: errorMessage,
+              variant: "destructive",
+            });
+          }
+        }
+      );
+    } catch (error) {
+      // Error handling already done by useApi hook
+    }
   };
 
   const handleBookmarkMessage = (message: EnhancedMessage) => {
@@ -455,17 +526,28 @@ export default function Chat() {
                     
                     {/* Actions for AI messages */}
                     {message.sender === "ai" && (
-                      <div className="flex items-center justify-between mt-2">
-                        <MessageFeedback messageId={message.id} />
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleBookmarkMessage(message)}
-                          className="text-yellow-600 hover:text-yellow-800"
-                          data-testid={`bookmark-${message.id}`}
-                        >
-                          <Star className="w-3 h-3" />
-                        </Button>
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between">
+                          <MessageFeedback messageId={message.id} />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleBookmarkMessage(message)}
+                            className="text-yellow-600 hover:text-yellow-800"
+                            data-testid={`bookmark-${message.id}`}
+                          >
+                            <Star className="w-3 h-3" />
+                          </Button>
+                        </div>
+                        
+                        {/* Followup chips - only show for the last AI message */}
+                        {message.id === chatState.lastAIMessageId && (
+                          <FollowupChips
+                            suggestions={message.suggestions}
+                            onPick={handleFollowupQuestion}
+                            disabled={chatApi.loading || chatState.isTyping}
+                          />
+                        )}
                       </div>
                     )}
                   </div>

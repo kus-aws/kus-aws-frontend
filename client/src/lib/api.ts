@@ -63,21 +63,18 @@ async function request<T>(
 
 export const api = {
   health: () => request<string>("/health"),
-  chat: (payload: {
-    userQuestion: string;
-    major: string;
-    subField: string;
-    conversationId?: string;
-  }) => request<{ aiResponse: string; conversationId: string }>("/chat", { method: "POST", body: payload }),
+  chat: (payload: BackendChatRequest) => request<BackendChatResponse>("/chat", { method: "POST", body: payload }),
   faq: (subField: string) => request<{ faqs: Array<{ question: string; answer: string }> }>(`/faq?subField=${encodeURIComponent(subField)}`),
 };
 
-// Legacy compatibility types
+// Updated types for followup suggestions
 export interface ChatRequest {
   message: string;
   majorCategory: string;
   subCategory: string;
   sessionId?: string;
+  suggestCount?: number;
+  followupMode?: "never" | "single" | "multi";
 }
 
 export interface ChatResponse {
@@ -86,6 +83,23 @@ export interface ChatResponse {
   timestamp: string;
   sessionId: string;
   processingTime: number;
+  suggestions?: string[];
+}
+
+// New types for backend API
+export interface BackendChatRequest {
+  userQuestion: string;
+  major: string;
+  subField: string;
+  conversationId?: string;
+  suggestCount?: number;
+  followupMode?: "never" | "single" | "multi";
+}
+
+export interface BackendChatResponse {
+  aiResponse: string;
+  conversationId: string;
+  suggestions?: string[];
 }
 
 export interface FeedbackRequest {
@@ -140,12 +154,16 @@ class ApiService {
   }
 
   async sendChatMessage(chatData: ChatRequest): Promise<ChatResponse> {
-    const response = await api.chat({
+    const backendRequest: BackendChatRequest = {
       userQuestion: chatData.message,
       major: chatData.majorCategory,
       subField: chatData.subCategory,
       conversationId: chatData.sessionId,
-    });
+      suggestCount: chatData.suggestCount ?? 3,
+      followupMode: chatData.followupMode ?? "multi",
+    };
+
+    const response = await api.chat(backendRequest);
     
     return {
       id: `ai-${Date.now()}`,
@@ -153,6 +171,7 @@ class ApiService {
       timestamp: new Date().toISOString(),
       sessionId: response.conversationId,
       processingTime: 0,
+      suggestions: response.suggestions,
     };
   }
 
