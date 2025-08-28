@@ -1,6 +1,6 @@
-import { ChatRequest, ChatResponse, FeedbackRequest, HealthResponse, MajorCategory } from "@shared/schema";
+import { ChatRequest, ChatResponse, FeedbackRequest, HealthResponse, MajorCategory } from "../types/api";
 
-export const API_BASE: string = (import.meta.env.VITE_API_BASE_URL as string) || "http://localhost:8000";
+export const API_BASE: string = (import.meta.env.VITE_API_BASE_URL as string) || "https://your-backend-api.com";
 
 class ApiError extends Error {
   constructor(
