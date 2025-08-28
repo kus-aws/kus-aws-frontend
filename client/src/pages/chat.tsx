@@ -17,7 +17,7 @@ import { ChatMessages } from "@/components/ChatMessages";
 import { ChatInput } from "@/components/ChatInput";
 import { SuggestionChips } from "@/components/SuggestionChips";
 import { useChat } from "@/hooks/useChat";
-import { health } from "@/lib/api";
+import { BASE, ensureBackend } from "@/lib/api";
 import { apiService, ApiError } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
 import { useToast } from "@/hooks/use-toast";
@@ -77,14 +77,17 @@ export default function Chat() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   
-  // Health check on mount
+  // Backend validation on mount
   useEffect(() => {
-    health().then(() => {
-      console.log('✅ Backend health check passed');
-    }).catch(err => {
-      console.warn('⚠️ Backend health check failed:', err);
+    ensureBackend().catch(err => {
+      console.error('❌ Backend validation failed:', err);
+      toast({
+        title: "백엔드 연결 오류",
+        description: err.message || "백엔드 서버에 연결할 수 없습니다.",
+        variant: "destructive",
+      });
     });
-  }, []);
+  }, [toast]);
   const [chatState, setChatState] = useState<ChatState>({
     messages: [],
     sessionId: `session-${Date.now()}`,

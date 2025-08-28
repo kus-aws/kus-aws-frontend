@@ -1,6 +1,9 @@
 // SSE streaming API for AWS Lambda backend
-const BASE = import.meta.env.NEXT_PUBLIC_BACKEND_BASE!;
+const BASE = import.meta.env.NEXT_PUBLIC_BACKEND_BASE?.replace(/\/$/, '') || '';
 if (!BASE) console.warn('NEXT_PUBLIC_BACKEND_BASE not set');
+
+// Export BASE for external validation
+export { BASE };
 
 export type SSEEvent =
   | { type: 'start'; conversationId: string }
@@ -201,8 +204,22 @@ export const apiService = new ApiService();
 export default apiService;
 
 export async function health(): Promise<'ok'> {
+  if (!BASE) throw new Error('BACKEND_BASE_NOT_SET');
   const r = await fetch(`${BASE}/health`, { credentials: 'omit' });
   return r.json();
+}
+
+export async function ensureBackend() {
+  if (!BASE) {
+    // UI에 친절하게 노출
+    throw new Error('백엔드 주소 미설정: .env.local의 NEXT_PUBLIC_BACKEND_BASE를 확인하세요.');
+  }
+  try {
+    const h = await health();
+    console.log('Health:', h);
+  } catch (e) {
+    console.warn('⚠️ Backend health check failed:', e);
+  }
 }
 
 export function streamChat(opts: {
@@ -214,6 +231,11 @@ export function streamChat(opts: {
   signal?: AbortSignal;
 }) {
   const { q, major, subField, conversationId, onStart, onDelta, onDone, onError, signal } = opts;
+
+  if (!BASE) {
+    onError?.('백엔드 주소 미설정: .env.local의 NEXT_PUBLIC_BACKEND_BASE를 확인하세요.');
+    return () => {};
+  }
 
   // ✅ URLSearchParams로 인코딩 보장
   const u = new URL(`${BASE}/chat/stream`);
@@ -250,12 +272,14 @@ export function streamChat(opts: {
 export async function fetchSuggestions(body: {
   conversationId: string; major: string; subField: string; suggestCount: number;
 }): Promise<string[]> {
+  if (!BASE) throw new Error('BACKEND_BASE_NOT_SET');
+
   const r = await fetch(`${BASE}/suggestions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     credentials: 'omit',
   });
-  const j = await r.json();
+  const j = await r.json().catch(async () => ({ suggestions: [] }));
   return Array.isArray(j?.suggestions) ? j.suggestions : [];
 }
