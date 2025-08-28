@@ -15,9 +15,9 @@ import { StreamingMessage, TutorState } from "@/components/StreamingMessage";
 import { connectStream, fetchSuggestions } from "@/lib/streaming";
 import { ChatMessages } from "@/components/ChatMessages";
 import { ChatInput } from "@/components/ChatInput";
-import { SuggestionChips } from "@/components/SuggestionChips";
-import { useChat } from "@/hooks/useChat";
-import { health } from "@/lib/api";
+import { SuggestionChips } from "@/components/SuggestionChips-clean";
+import { useChat } from "@/hooks/useChat-clean";
+import { health } from "@/lib/api-clean";
 import { apiService, ApiError } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
 import { useToast } from "@/hooks/use-toast";
@@ -94,7 +94,7 @@ export default function Chat() {
   });
   const [inputMessage, setInputMessage] = useState("");
   const [currentTypingMessage, setCurrentTypingMessage] = useState<string | null>(null);
-  const [isUsingNewChat, setIsUsingNewChat] = useState(false);
+  const [isUsingNewChat, setIsUsingNewChat] = useState(true); // Default to SSE streaming
   
   // New SSE chat hook
   const newChat = useChat({
@@ -102,6 +102,16 @@ export default function Chat() {
     subField: params?.subId || '',
     suggestCount: 3
   });
+
+  // ✅ 정의 누락으로 터지던 부분 해결
+  const handleFollowupQuestion = (q: string) => {
+    if (isUsingNewChat) {
+      newChat.send(q);
+    } else {
+      setInputMessage('');
+      handleSendMessage(q);
+    }
+  };
   
   // SSE 스트리밍 상태 (legacy)
   const [tutorState, setTutorState] = useState<TutorState>({
@@ -590,9 +600,8 @@ export default function Chat() {
               )}
               {!newChat.loading && newChat.suggestions.length > 0 && (
                 <SuggestionChips
-                  suggestions={newChat.suggestions}
+                  items={newChat.suggestions}
                   onSelect={(suggestion) => newChat.send(suggestion)}
-                  disabled={newChat.loading}
                 />
               )}
               <ChatInput
