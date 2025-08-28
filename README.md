@@ -96,7 +96,7 @@ npm run dev
 - 전체 빌드
 ```
 npm run build
-# 결과물: dist/public (정적 파일), dist/index.js (서버)
+# 결과물: dist/public (정적 파일), dist/index.js (서버), client/dist (클라이언트 단독 배포용)
 ```
 
 - 프로덕션 실행
@@ -104,11 +104,143 @@ npm run build
 npm start
 ```
 
-- Amplify Hosting(수동 업로드)로 프런트만 배포하려면:
+### Amplify Hosting(수동 업로드) 가이드
+
+1) Vite 환경변수 설정 (API 베이스)
+
+- `client/` 아래 환경 파일 생성
 ```
-npm run build:client
-# 업로드 대상: client/dist
+client/.env.local
+VITE_API_BASE_URL=http://localhost:8000
+
+client/.env.production
+VITE_API_BASE_URL=https://{api-id}.execute-api.{region}.amazonaws.com
+# 스테이지가 prod인 경우, 끝에 "/prod"를 붙이세요 (마지막 슬래시 없이)
+# 예) https://xxxx.execute-api.us-east-1.amazonaws.com/prod
 ```
+- 주의: 이 파일들은 커밋하지 않습니다(`.gitignore`에 `.env*` 포함).
+- 끝에 슬래시는 붙이지 않습니다.
+
+2) 빌드 실행(루트에서)
+```
+npm i
+npm run build
+# 산출물: dist/public, dist/index.js, client/dist
+```
+
+3) Amplify Hosting 수동 업로드
+- Amplify 콘솔 → Hosting → Deploy without Git → Drag & drop
+- 폴더 `client/dist` 를 업로드 대상로 지정
+- SPA 라우팅이 필요하면 커스텀 리라이트/헤더 추가:
+  - SPA rewrite: `/* → /index.html (200)`
+  - 배포 후 `/health` 페이지에서 상태 확인
+
+4) 배포 검증 및 CORS 확인
+- API Gateway/Lambda 응답에서 Amplify 도메인을 허용 Origin 으로 설정
+ - 배포 후 브라우저 네트워크 탭으로 `/health` 요청이 200인지 확인
+ - 주의: Vite는 빌드 타임 치환을 사용하므로 API URL 변경 시 반드시 재빌드 필요
+
+5) 트러블슈팅
+- 새로고침 403/404: 위 SPA rewrite 규칙 적용
+- CORS 에러: `VITE_API_BASE_URL`과 백엔드 CORS 설정 재확인
+- 프런트는 설정된 베이스 아래 `/api/*` 경로로 호출
+
+### Quick Deploy Checklist
+- `client/.env.production` 설정:
+  - 스테이지 없음: `VITE_API_BASE_URL=https://{api-id}.execute-api.{region}.amazonaws.com`
+  - 스테이지 prod: `...amazonaws.com/prod` (끝에 슬래시 없이)
+- `npm run build` 실행 → 업로드 대상: `client/dist`
+- Amplify Hosting 콘솔 업로드(Drag & Drop)
+- SPA rewrite 규칙 추가: `/* → /index.html (200)`
+- 배포 URL에서 `/health` 페이지로 200 응답 확인
+- 필요 시 CORS에 Amplify 도메인 Origin 허용
+
+### Step-by-step Deploy (복붙 가이드)
+1) API URL 설정
+```
+# $default 스테이지(끝에 슬래시 금지)
+printf "VITE_API_BASE_URL=https://{api-id}.execute-api.{region}.amazonaws.com\n" > client/.env.production
+
+# prod 스테이지인 경우(끝에 슬래시 금지)
+# printf "VITE_API_BASE_URL=https://{api-id}.execute-api.{region}.amazonaws.com/prod\n" > client/.env.production
+```
+
+2) 빌드
+```
+npm ci || npm i
+npm run build
+```
+
+3) 업로드(Amplify 콘솔)
+- Hosting → Deploy without Git → `client/dist` 폴더 드래그&드롭
+- Rewrites & redirects에 추가:
+```
+/*  /index.html  200
+```
+
+4) 검증
+- 배포 URL 접속 → `/health` 페이지 버튼 클릭 → 200 확인
+- 브라우저 DevTools → Network → `/api/health` 요청이 `.env.production`의 `VITE_API_BASE_URL` 기준으로 나가는지 확인
+
+5) CORS 설정(백엔드)
+- API Gateway/Lambda에서 Allowed Origin에 Amplify 배포 도메인만 허용 권장
+
+6) 변경 시 재빌드
+- `VITE_API_BASE_URL` 변경 시 반드시 `npm run build` 재실행 후 재업로드
+
+### Troubleshooting (요약)
+- 새로고침 403/404: SPA rewrite 규칙 `/* → /index.html (200)` 추가
+- CORS 에러: 백엔드 Allowed Origin에 Amplify 도메인 포함 여부 확인
+- API 4xx/5xx: API Gateway/CloudWatch 로그로 상세 원인 확인, 프런트 Network 탭 메시지 참조
+- **정적 파일 미제공/JS 번들 노출**: `server/vite.ts`의 `serveStatic()` 함수가 `../dist/public` 경로를 정확히 바라보는지 확인
+- **환경변수 누락**: `VITE_API_BASE_URL`이 설정되지 않으면 API 호출이 실패하여 화면이 정상 동작하지 않음
+
+### 운영자 수행 체크리스트 (당신이 할 일)
+1) Invoke URL/스테이지 확정 [필수]
+   - $default: `https://{api-id}.execute-api.{region}.amazonaws.com`
+   - prod:     `https://{api-id}.execute-api.{region}.amazonaws.com/prod`
+   - 규칙: 마지막 슬래시 금지
+
+2) `.env.production` 작성 [필수]
+```
+# $default 스테이지 예시
+VITE_API_BASE_URL=https://{api-id}.execute-api.{region}.amazonaws.com
+
+# prod 스테이지 예시(끝에 /prod, 마지막 슬래시 금지)
+# VITE_API_BASE_URL=https://{api-id}.execute-api.{region}.amazonaws.com/prod
+```
+   - 위치: `client/.env.production` (커밋 금지, `.gitignore` 적용됨)
+
+3) 빌드 [필수]
+```
+npm ci || npm i
+npm run build
+```
+   - 업로드 대상: `client/dist`
+
+4) Amplify 업로드/설정 [필수]
+   - 콘솔 → Hosting → Deploy without Git → `client/dist` 드래그&드롭
+   - Rewrites & redirects 추가: `/*  /index.html  200`
+
+5) 배포 검증 [필수]
+   - 배포 URL 접속 → `/health` 페이지 버튼 클릭 → HTTP 200 확인
+   - DevTools Network에서 `/api/health`가 `.env.production`의 `VITE_API_BASE_URL` 기준으로 호출되는지 확인
+
+6) CORS 설정(백엔드) [필수]
+   - API Gateway/Lambda Allowed Origin에 Amplify 도메인만 허용 권장
+   - 프리플라이트(OPTIONS) 및 필요한 헤더(`Content-Type` 등) 허용
+
+7) 변경 반영 [필수]
+   - API URL 변경 시 매번 `npm run build` 재실행 후 재업로드
+
+8) 문제 발생 시 [선택]
+   - 아래 Troubleshooting 섹션 순서대로 점검(Rewrite → CORS → API 응답)
+
+### Environment templates
+- `client/env.production.example`: prod 스테이지 주석 포함
+- `client/env.staging.example`: staging 스테이지 주석 포함
+- `client/env.qa.example`: qa 스테이지 주석 포함
+- 공통 규칙: 마지막 슬래시 금지, 실제 사용 파일은 `.env.*`로 복사 후 커밋 금지
 
 ## 디렉토리 구조
 ```
@@ -181,3 +313,20 @@ npm run db:push
   - 서버 `PORT` 변경 또는 프런트 Vite 개발 서버 포트 지정
 - API CORS:
   - 백엔드(또는 API Gateway)에서 Origin을 Amplify 도메인으로 허용
+
+## 현재 진행 상태 (woo)
+- **API 베이스 일원화**: `VITE_API_BASE_URL`로 통합, 기본값 `http://localhost:8000`
+- **환경파일/보안**: `.gitignore`에 `.env*`, `client/.env*` 추가; 샘플 `client/env.production.example` 제공
+- **API 서비스 점검**: `client/src/services/api.ts`가 `import.meta.env.VITE_API_BASE_URL` 사용
+- **헬스체크 UI 추가**: `/health` 라우트에서 `/api/health` 호출 테스트 가능(베이스 URL 표시)
+- **배포 가이드 강화**: Amplify 수동 업로드 가이드 README에 통합, "Quick Deploy Checklist" 추가
+- **빌드 스크립트 보강**: Vite/esbuild를 node로 호출하여 권한 이슈 방지; `client/dist` 산출 확인
+- **헬퍼 제공**: `API_BASE` export 및 `health()`, `echo(q)` 헬퍼 추가 (`client/src/services/api.ts`)
+ - **상태 요약**: 주요 설정/가이드/헬퍼/체크리스트 완료. 배포 및 CORS 검증 단계만 남음.
+
+### 남은 태스크
+- **VITE_API_BASE_URL 확정**: 실제 Invoke URL로 `client/.env.production` 설정(스테이지 `/prod` 포함 여부 반영)
+- **수동 배포/검증**: `npm run build` → `client/dist` 업로드 → SPA 리라이트 `/* → /index.html (200)` 설정 → `/health` 200 확인
+- **CORS 설정**: API Gateway/Lambda에 Amplify 도메인 Origin 허용
+- **선택**: ad-hoc `fetch` 통합(`apiService`), CI에 빌드/린트/타입체크 추가 및 `ApiService` 테스트
+

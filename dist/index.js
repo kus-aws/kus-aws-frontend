@@ -567,6 +567,9 @@ var vite_config_default = defineConfig({
     }
   },
   root: path.resolve(import.meta.dirname, "client"),
+  define: {
+    __dirname: JSON.stringify(import.meta.dirname)
+  },
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true
@@ -634,7 +637,7 @@ async function setupVite(app2, server) {
   });
 }
 function serveStatic(app2) {
-  const distPath = path2.resolve(import.meta.dirname, "public");
+  const distPath = path2.resolve(import.meta.dirname, "..", "dist", "public");
   if (!fs.existsSync(distPath)) {
     throw new Error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`
@@ -642,7 +645,12 @@ function serveStatic(app2) {
   }
   app2.use(express.static(distPath));
   app2.use("*", (_req, res) => {
-    res.sendFile(path2.resolve(distPath, "index.html"));
+    res.sendFile(path2.resolve(distPath, "index.html"), (err) => {
+      if (err) {
+        log(`Error serving index.html: ${err.message}`, "static");
+        res.status(500).send("Internal Server Error");
+      }
+    });
   });
 }
 
