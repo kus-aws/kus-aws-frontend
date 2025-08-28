@@ -13,6 +13,11 @@ import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { FollowupChips } from "@/components/FollowupChips";
 import { StreamingMessage, TutorState } from "@/components/StreamingMessage";
 import { connectStream, fetchSuggestions } from "@/lib/streaming";
+import { ChatMessages } from "@/components/ChatMessages";
+import { ChatInput } from "@/components/ChatInput";
+import { SuggestionChips } from "@/components/SuggestionChips";
+import { useChat } from "@/hooks/useChat";
+import { health } from "@/lib/api";
 import { apiService, ApiError } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
 import { useToast } from "@/hooks/use-toast";
@@ -70,6 +75,16 @@ interface ChatState {
 export default function Chat() {
   const [, params] = useRoute("/chat/:majorId/:subId");
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  
+  // Health check on mount
+  useEffect(() => {
+    health().then(() => {
+      console.log('✅ Backend health check passed');
+    }).catch(err => {
+      console.warn('⚠️ Backend health check failed:', err);
+    });
+  }, []);
   const [chatState, setChatState] = useState<ChatState>({
     messages: [],
     sessionId: `session-${Date.now()}`,
@@ -79,8 +94,16 @@ export default function Chat() {
   });
   const [inputMessage, setInputMessage] = useState("");
   const [currentTypingMessage, setCurrentTypingMessage] = useState<string | null>(null);
+  const [isUsingNewChat, setIsUsingNewChat] = useState(false);
   
-  // SSE 스트리밍 상태
+  // New SSE chat hook
+  const newChat = useChat({
+    major: params?.majorId || '',
+    subField: params?.subId || '',
+    suggestCount: 3
+  });
+  
+  // SSE 스트리밍 상태 (legacy)
   const [tutorState, setTutorState] = useState<TutorState>({
     conversationId: `session-${Date.now()}`,
     answer: "",
@@ -94,7 +117,6 @@ export default function Chat() {
   // const [fileUploadOpen, setFileUploadOpen] = useState(false);"}
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { toast } = useToast();
   // const { updateProgress, addBookmark } = useUserStore();
   // const { preferences } = useTheme();
   
@@ -513,9 +535,10 @@ export default function Chat() {
                   key={index}
                   variant="outline"
                   size="sm"
-                  onClick={() => handleSampleQuestion(question)}
+                  onClick={() => isUsingNewChat ? newChat.send(question) : handleSampleQuestion(question)}
                   className="text-xs bg-white hover:bg-amber-100 border-amber-300 text-amber-700"
                   data-testid={`button-sample-${index}`}
+                  disabled={isUsingNewChat ? newChat.loading : false}
                 >
                   {question}
                 </Button>
@@ -524,10 +547,68 @@ export default function Chat() {
           </CardContent>
         </Card>
 
-        {/* Chat Messages */}
-        <Card className="mb-6 bg-white">
-          <CardContent className="p-0">
-            <div className="h-96 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
+        {/* Mode Toggle */}
+        <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="flex items-center space-x-4">
+            <span className="text-sm font-medium text-blue-800">채팅 모드:</span>
+            <Button
+              variant={!isUsingNewChat ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIsUsingNewChat(false)}
+              className="text-xs"
+            >
+              기존 방식
+            </Button>
+            <Button
+              variant={isUsingNewChat ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIsUsingNewChat(true)}
+              className="text-xs"
+            >
+              SSE 스트리밍
+            </Button>
+          </div>
+        </div>
+
+        {/* New SSE Chat Interface */}
+        {isUsingNewChat ? (
+          <Card className="mb-6 bg-white">
+            <div className="h-96 flex flex-col">
+              <ChatMessages messages={newChat.messages} loading={newChat.loading} />
+              {newChat.error && (
+                <div className="p-4 bg-red-50 border-t border-red-200 text-red-700 text-sm flex items-center justify-between">
+                  <span>❌ {newChat.error}</span>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => window.location.reload()}
+                    className="text-red-700 border-red-300 hover:bg-red-100"
+                  >
+                    새로고침
+                  </Button>
+                </div>
+              )}
+              {!newChat.loading && newChat.suggestions.length > 0 && (
+                <SuggestionChips
+                  suggestions={newChat.suggestions}
+                  onSelect={(suggestion) => newChat.send(suggestion)}
+                  disabled={newChat.loading}
+                />
+              )}
+              <ChatInput
+                onSend={(message) => newChat.send(message)}
+                onCancel={newChat.cancel}
+                loading={newChat.loading}
+              />
+            </div>
+          </Card>
+        ) : (
+          /* Legacy Chat Interface */
+          <>
+            {/* Chat Messages */}
+            <Card className="mb-6 bg-white">
+              <CardContent className="p-0">
+                <div className="h-96 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
               {chatState.messages.map((message) => (
                 <div
                   key={message.id}
@@ -585,14 +666,7 @@ export default function Chat() {
                           </Button>
                         </div>
                         
-                        {/* Followup chips - only show for the last AI message */}
-                        {message.id === chatState.lastAIMessageId && (
-                          <FollowupChips
-                            suggestions={message.suggestions}
-                            onPick={handleFollowupQuestion}
-                            disabled={chatApi.loading || chatState.isTyping}
-                          />
-                        )}
+                        {/* Legacy followup chips - disabled in favor of new SSE mode */}
                       </div>
                     )}
                   </div>
@@ -676,6 +750,8 @@ export default function Chat() {
             </div>
           </CardContent>
         </Card>
+          </>
+        )}
       </div>
     </div>
   );
