@@ -1,6 +1,9 @@
 // CORS-friendly API client for AWS Lambda backend
 const BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, ""); // 끝 슬래시 제거
 
+// New backend base for SSE streaming
+const BACKEND_BASE = (import.meta.env.NEXT_PUBLIC_BACKEND_BASE || "").replace(/\/+$/, "");
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -192,3 +195,98 @@ class ApiService {
 
 export const apiService = new ApiService();
 export default apiService;
+
+// New SSE streaming API
+export async function health(): Promise<"ok"> {
+  const response = await fetch(`${BACKEND_BASE}/health`, { 
+    credentials: 'omit' 
+  });
+  return response.json();
+}
+
+export function streamChat(params: {
+  q: string;
+  major: string;
+  subField: string;
+  conversationId: string;
+  onDelta: (chunk: string) => void;
+  onStart?: (cid: string) => void;
+  onDone?: () => void;
+  onError?: (msg: string) => void;
+  signal?: AbortSignal;
+}): () => void {
+  const { q, major, subField, conversationId, onDelta, onStart, onDone, onError, signal } = params;
+  
+  const url = new URL(`${BACKEND_BASE}/chat/stream`);
+  url.searchParams.set('q', q);
+  url.searchParams.set('major', major);
+  url.searchParams.set('subField', subField);
+  url.searchParams.set('conversationId', conversationId);
+  
+  const eventSource = new EventSource(url.toString());
+  
+  const cleanup = () => eventSource.close();
+  
+  if (signal) {
+    signal.addEventListener('abort', cleanup, { once: true });
+  }
+  
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data) as import('./types').SSEEvent;
+      
+      switch (data.type) {
+        case 'start':
+          onStart?.(data.conversationId);
+          break;
+        case 'answer_delta':
+          onDelta(data.text);
+          break;
+        case 'done':
+          onDone?.();
+          eventSource.close();
+          break;
+        case 'error':
+          onError?.(data.message);
+          eventSource.close();
+          break;
+      }
+    } catch (err) {
+      onError?.('Parse error');
+      eventSource.close();
+    }
+  };
+  
+  eventSource.onerror = () => {
+    onError?.('Connection error');
+    eventSource.close();
+  };
+  
+  return cleanup;
+}
+
+export async function fetchSuggestions(body: {
+  conversationId: string;
+  major: string;
+  subField: string;
+  suggestCount: number;
+}): Promise<string[]> {
+  try {
+    const response = await fetch(`${BACKEND_BASE}/suggestions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      credentials: 'omit',
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const json = await response.json();
+    return Array.isArray(json?.suggestions) ? json.suggestions : [];
+  } catch (error) {
+    console.warn('Failed to fetch suggestions:', error);
+    return [];
+  }
+}
