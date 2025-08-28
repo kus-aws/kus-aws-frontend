@@ -1,33 +1,17 @@
-import React from 'react';
-import { Button } from '@/components/ui/button';
-
-interface SuggestionChipsProps {
-  suggestions: string[];
-  onSelect: (suggestion: string) => void;
-  disabled?: boolean;
-}
-
-export function SuggestionChips({ suggestions, onSelect, disabled = false }: SuggestionChipsProps) {
-  if (!suggestions.length) return null;
-
+// src/components/SuggestionChips.tsx
+export function SuggestionChips({ items, onSelect }: { items: string[]; onSelect: (q: string) => void }) {
+  if (!items?.length) return null;
   return (
-    <div className="bg-gray-50 border-t p-4">
-      <div className="text-sm text-gray-600 mb-3">💡 연관 질문</div>
-      <div className="flex flex-wrap gap-2">
-        {suggestions.map((suggestion, index) => (
-          <Button
-            key={index}
-            variant="outline"
-            size="sm"
-            onClick={() => onSelect(suggestion)}
-            disabled={disabled}
-            className="text-sm bg-white hover:bg-blue-50 border-blue-200 text-blue-700 max-w-xs"
-            title={suggestion}
-          >
-            <span className="truncate">{suggestion}</span>
-          </Button>
-        ))}
-      </div>
+    <div className="flex flex-wrap gap-2 mt-3">
+      {items.map((s) => (
+        <button
+          key={s}
+          onClick={() => onSelect(s)}    // ✅ 즉시 실행 금지
+          className="px-3 py-1 rounded-full border text-sm hover:bg-gray-50"
+        >
+          {s}
+        </button>
+      ))}
     </div>
   );
 }

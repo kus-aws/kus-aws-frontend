@@ -1,8 +1,12 @@
-// CORS-friendly API client for AWS Lambda backend
-const BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, ""); // 끝 슬래시 제거
+// SSE streaming API for AWS Lambda backend
+const BASE = import.meta.env.NEXT_PUBLIC_BACKEND_BASE!;
+if (!BASE) console.warn('NEXT_PUBLIC_BACKEND_BASE not set');
 
-// New backend base for SSE streaming
-const BACKEND_BASE = (import.meta.env.NEXT_PUBLIC_BACKEND_BASE || "").replace(/\/+$/, "");
+export type SSEEvent =
+  | { type: 'start'; conversationId: string }
+  | { type: 'answer_delta'; text: string }
+  | { type: 'done' }
+  | { type: 'error'; message: string };
 
 export class ApiError extends Error {
   constructor(
@@ -196,104 +200,62 @@ class ApiService {
 export const apiService = new ApiService();
 export default apiService;
 
-// New SSE streaming API
-export async function health(): Promise<"ok"> {
-  const response = await fetch(`${BACKEND_BASE}/health`, { 
-    credentials: 'omit' 
-  });
-  
-  if (!response.ok) {
-    throw new Error(`Health check failed: ${response.status} ${response.statusText}`);
-  }
-  
-  // Backend returns JSON string "ok"
-  const result = await response.json();
-  return result as "ok";
+export async function health(): Promise<'ok'> {
+  const r = await fetch(`${BASE}/health`, { credentials: 'omit' });
+  return r.json();
 }
 
-export function streamChat(params: {
-  q: string;
-  major: string;
-  subField: string;
-  conversationId: string;
-  onDelta: (chunk: string) => void;
+export function streamChat(opts: {
+  q: string; major: string; subField: string; conversationId: string;
   onStart?: (cid: string) => void;
+  onDelta: (chunk: string) => void;
   onDone?: () => void;
   onError?: (msg: string) => void;
   signal?: AbortSignal;
-}): () => void {
-  const { q, major, subField, conversationId, onDelta, onStart, onDone, onError, signal } = params;
-  
-  const url = new URL(`${BACKEND_BASE}/chat/stream`);
-  url.searchParams.set('q', q);
-  url.searchParams.set('major', major);
-  url.searchParams.set('subField', subField);
-  url.searchParams.set('conversationId', conversationId);
-  
-  const eventSource = new EventSource(url.toString());
-  
-  const cleanup = () => eventSource.close();
-  
-  if (signal) {
-    signal.addEventListener('abort', cleanup, { once: true });
-  }
-  
-  eventSource.onmessage = (event) => {
+}) {
+  const { q, major, subField, conversationId, onStart, onDelta, onDone, onError, signal } = opts;
+
+  // ✅ URLSearchParams로 인코딩 보장
+  const u = new URL(`${BASE}/chat/stream`);
+  u.searchParams.set('q', q);
+  u.searchParams.set('major', major);
+  u.searchParams.set('subField', subField);
+  u.searchParams.set('conversationId', conversationId);
+
+  console.log('🔌 Starting SSE stream:', u.toString());
+  const es = new EventSource(u.toString(), { withCredentials: false });
+  const close = () => es.close();
+  if (signal) signal.addEventListener('abort', close, { once: true });
+
+  es.onopen = () => console.log('✅ SSE open');
+  es.onmessage = (e) => {
     try {
-      const data = JSON.parse(event.data) as import('./types').SSEEvent;
-      
-      switch (data.type) {
-        case 'start':
-          onStart?.(data.conversationId);
-          break;
-        case 'answer_delta':
-          onDelta(data.text);
-          break;
-        case 'done':
-          onDone?.();
-          eventSource.close();
-          break;
-        case 'error':
-          onError?.(data.message);
-          eventSource.close();
-          break;
-      }
-    } catch (err) {
-      onError?.('Parse error');
-      eventSource.close();
+      const data = JSON.parse(e.data) as SSEEvent;
+      if (data.type === 'start') onStart?.(data.conversationId);
+      else if (data.type === 'answer_delta') onDelta(data.text);
+      else if (data.type === 'done') { onDone?.(); es.close(); }
+      else if (data.type === 'error') { onError?.(data.message); es.close(); }
+    } catch {
+      onError?.('parse error'); es.close();
     }
   };
-  
-  eventSource.onerror = () => {
-    onError?.('Connection error');
-    eventSource.close();
+  es.onerror = (e) => {
+    console.error('🔥 SSE Error:', e, 'readyState:', es.readyState); // 2=CLOSED
+    onError?.('connection error'); es.close();
   };
-  
-  return cleanup;
+
+  return close; // 호출 측에서 abort용으로 사용
 }
 
 export async function fetchSuggestions(body: {
-  conversationId: string;
-  major: string;
-  subField: string;
-  suggestCount: number;
+  conversationId: string; major: string; subField: string; suggestCount: number;
 }): Promise<string[]> {
-  try {
-    const response = await fetch(`${BACKEND_BASE}/suggestions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      credentials: 'omit',
-    });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    const json = await response.json();
-    return Array.isArray(json?.suggestions) ? json.suggestions : [];
-  } catch (error) {
-    console.warn('Failed to fetch suggestions:', error);
-    return [];
-  }
+  const r = await fetch(`${BASE}/suggestions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    credentials: 'omit',
+  });
+  const j = await r.json();
+  return Array.isArray(j?.suggestions) ? j.suggestions : [];
 }
