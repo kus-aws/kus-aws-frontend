@@ -201,7 +201,14 @@ export async function health(): Promise<"ok"> {
   const response = await fetch(`${BACKEND_BASE}/health`, { 
     credentials: 'omit' 
   });
-  return response.json();
+  
+  if (!response.ok) {
+    throw new Error(`Health check failed: ${response.status} ${response.statusText}`);
+  }
+  
+  // Backend returns JSON string "ok"
+  const result = await response.json();
+  return result as "ok";
 }
 
 export function streamChat(params: {
