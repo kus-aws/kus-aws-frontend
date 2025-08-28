@@ -1,5 +1,5 @@
 // Clean SSE streaming API for AWS Lambda backend
-const BASE = import.meta.env.NEXT_PUBLIC_BACKEND_BASE || 'https://2kdtuncj36tas5twwm7dsgpz5y0bkfkw.lambda-url.us-east-1.on.aws';
+const BASE = (import.meta.env.NEXT_PUBLIC_BACKEND_BASE || 'https://2kdtuncj36tas5twwm7dsgpz5y0bkfkw.lambda-url.us-east-1.on.aws').replace(/\/+$/, '');
 
 console.log('🔧 Backend URL:', BASE);
 if (!import.meta.env.NEXT_PUBLIC_BACKEND_BASE) {
@@ -38,22 +38,42 @@ export function streamChat(opts: {
   u.searchParams.set('subField', subField);
   u.searchParams.set('conversationId', conversationId);
 
+  console.log('🌊 Starting SSE stream:', u.toString());
   const es = new EventSource(u.toString(), { withCredentials: false });
   const close = () => es.close();
   if (signal) signal.addEventListener('abort', close, { once: true });
 
   es.onmessage = (e) => {
     try {
+      console.log('📨 SSE message received:', e.data);
       const data = JSON.parse(e.data) as SSEEvent;
-      if (data.type === 'start') onStart?.(data.conversationId);
+      if (data.type === 'start') {
+        console.log('🚀 SSE stream started:', data.conversationId);
+        onStart?.(data.conversationId);
+      }
       else if (data.type === 'answer_delta') onDelta(data.text);
-      else if (data.type === 'done') { onDone?.(); es.close(); }
-      else if (data.type === 'error') { onError?.(data.message); es.close(); }
-    } catch {
-      onError?.('parse error'); es.close();
+      else if (data.type === 'done') { 
+        console.log('✅ SSE stream completed');
+        onDone?.(); 
+        es.close(); 
+      }
+      else if (data.type === 'error') { 
+        console.error('❌ SSE stream error:', data.message);
+        onError?.(data.message); 
+        es.close(); 
+      }
+    } catch (err) {
+      console.error('🔥 SSE parse error:', err, 'Raw data:', e.data);
+      onError?.('parse error'); 
+      es.close();
     }
   };
-  es.onerror = () => { onError?.('connection error'); es.close(); };
+  es.onerror = (event) => { 
+    console.error('🔥 SSE Error:', event);
+    console.log('🔍 EventSource readyState:', es.readyState);
+    onError?.('connection error'); 
+    es.close(); 
+  };
 
   return close; // caller may call to abort
 }
