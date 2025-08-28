@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Send, RotateCcw, Lightbulb, Loader2, AlertCircle, RefreshCw, Search, Bookmark, Upload, Star } from "lucide-react";
 import { getMajorCategoryById, getSubCategoryById } from "@/data/categories";
-import { EnhancedMessage, ChatRequest } from "@shared/schema";
+import { ChatRequest } from "@/services/api";
 import { TypingAnimation } from "@/components/TypingAnimation";
 import { MessageFeedback } from "@/components/MessageFeedback";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
@@ -18,6 +18,31 @@ import { useToast } from "@/hooks/use-toast";
 // import { ChatSearch } from "@/components/ChatSearch";
 // import { BookmarkManager } from "@/components/BookmarkManager";
 // import { FileUpload } from "@/components/FileUpload";
+
+// Loading message component with rotating messages
+function LoadingMessage() {
+  const [messageIndex, setMessageIndex] = useState(0);
+  
+  const loadingMessages = [
+    "AI가 답변을 생성하고 있어요...",
+    "잠시만 기다려주세요...",
+    "최적의 답변을 준비 중입니다..."
+  ];
+  
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setMessageIndex((prev) => (prev + 1) % loadingMessages.length);
+    }, 2000); // 2초마다 메시지 변경
+    
+    return () => clearInterval(interval);
+  }, []);
+  
+  return (
+    <div className="text-sm text-gray-600">
+      <div className="animate-pulse">{loadingMessages[messageIndex]}</div>
+    </div>
+  );
+}
 // import { useUserStore } from "@/stores/userStore";
 // import { useTheme } from "@/hooks/useTheme";
 
@@ -463,11 +488,10 @@ export default function Chat() {
               {/* Loading State */}
               {chatApi.loading && !chatState.isTyping && (
                 <div className="flex justify-start">
-                  <div className="bg-gray-100 text-gray-800 px-4 py-2 rounded-lg flex items-center space-x-2 min-w-[200px]">
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                  <div className="bg-gray-100 text-gray-800 px-4 py-2 rounded-lg flex items-center space-x-3 min-w-[250px]">
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
                     <div className="flex-1">
-                      <div className="h-4 bg-gray-200 rounded animate-pulse mb-1"></div>
-                      <div className="h-3 bg-gray-200 rounded animate-pulse w-3/4"></div>
+                      <LoadingMessage />
                     </div>
                   </div>
                 </div>
