@@ -1,8 +1,11 @@
-// SSE streaming API for AWS Lambda backend
-export const BASE = (import.meta.env.NEXT_PUBLIC_BACKEND_BASE || '').replace(/\/$/, '');
+// Runtime verification logs for debugging
+console.log('[BASE from env]', import.meta.env.NEXT_PUBLIC_BACKEND_BASE);
+export const BASE =
+  import.meta.env.NEXT_PUBLIC_BACKEND_BASE?.replace(/\/$/, '') ?? '';
+console.log('[BASE after norm]', BASE);
 
-// ❗ 어떤 경우에도 origin으로 폴백하지 않음
 if (!BASE) {
+  // 빌드 후에도 빈 값이면 즉시 알림 (배포 환경점검용)
   console.warn('NEXT_PUBLIC_BACKEND_BASE not set');
 }
 
@@ -205,25 +208,22 @@ export const apiService = new ApiService();
 export default apiService;
 
 export async function health() {
-  if (!BASE) {
-    throw new Error('백엔드 주소 미설정: .env.local의 NEXT_PUBLIC_BACKEND_BASE를 확인하세요.');
-  }
+  if (!BASE) throw new Error('BACKEND_BASE_NOT_SET');
   const r = await fetch(`${BASE}/health`, { credentials: 'omit' });
-  // 백엔드가 "ok"를 JSON이 아닌 문자열로 주면 .json() 실패하니 .text()로 받기
-  const t = await r.text().catch(() => ''); 
-  return t; // "ok"
+  return r.ok ? r.text() : Promise.reject(new Error(`${r.status}`));
 }
 
 export async function ensureBackend() {
   if (!BASE) {
-    throw new Error('백엔드 주소 미설정: .env.local의 NEXT_PUBLIC_BACKEND_BASE를 확인하세요.');
+    throw new Error('백엔드 주소 미설정: .env(또는 Vercel env)의 NEXT_PUBLIC_BACKEND_BASE를 확인하세요.');
   }
   try {
     const h = await health();
-    console.log('Health:', h);
+    console.log('[health ok]', h);
   } catch (e) {
-    console.warn('⚠️ Backend validation failed:', e);
-    throw e;
+    console.warn('⚠️ Backend health check failed:', e);
+    // 여기서 UI를 막지 말고, 토스트만 띄우거나 조용히 패스
+    // throw 하지 않음으로써 UX가 깨지지 않게 함
   }
 }
 
