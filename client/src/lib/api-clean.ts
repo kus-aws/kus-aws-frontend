@@ -1,10 +1,8 @@
 // Clean SSE streaming API for AWS Lambda backend
-const BASE = (import.meta.env.NEXT_PUBLIC_BACKEND_BASE || 'https://2kdtuncj36tas5twwm7dsgpz5y0bkfkw.lambda-url.us-east-1.on.aws').replace(/\/+$/, '');
+const BASE = import.meta.env.NEXT_PUBLIC_BACKEND_BASE?.replace(/\/$/, '') ?? '';
 
-console.log('🔧 Backend URL:', BASE);
-if (!import.meta.env.NEXT_PUBLIC_BACKEND_BASE) {
-  console.warn('⚠️ NEXT_PUBLIC_BACKEND_BASE not set, using fallback URL');
-  console.log('Available env vars:', Object.keys(import.meta.env).filter(k => k.startsWith('NEXT_PUBLIC')));
+if (!BASE) {
+  console.warn('NEXT_PUBLIC_BACKEND_BASE not set');
 }
 
 export type SSEEvent =
@@ -14,7 +12,7 @@ export type SSEEvent =
   | { type: 'error'; message: string };
 
 export async function health(): Promise<'ok'> {
-  console.log('🔍 Health check URL:', `${BASE}/health`);
+  if (!BASE) throw new Error('BACKEND_BASE_NOT_SET');
   const r = await fetch(`${BASE}/health`, { credentials: 'omit' });
   return r.json();
 }
@@ -32,13 +30,13 @@ export function streamChat(opts: {
 }) {
   const { q, major, subField, conversationId, onStart, onDelta, onDone, onError, signal } = opts;
   
+  if (!BASE) throw new Error('BACKEND_BASE_NOT_SET');
   const u = new URL(`${BASE}/chat/stream`);
   u.searchParams.set('q', q);
   u.searchParams.set('major', major);
   u.searchParams.set('subField', subField);
   u.searchParams.set('conversationId', conversationId);
 
-  console.log('🌊 Starting SSE stream:', u.toString());
   const es = new EventSource(u.toString(), { withCredentials: false });
   const close = () => es.close();
   if (signal) signal.addEventListener('abort', close, { once: true });
@@ -84,6 +82,7 @@ export async function fetchSuggestions(body: {
   subField: string; 
   suggestCount: number;
 }): Promise<string[]> {
+  if (!BASE) throw new Error('BACKEND_BASE_NOT_SET');
   const r = await fetch(`${BASE}/suggestions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
