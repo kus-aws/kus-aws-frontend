@@ -15,9 +15,9 @@ import { StreamingMessage, TutorState } from "@/components/StreamingMessage";
 import { connectStream, fetchSuggestions } from "@/lib/streaming";
 import { ChatMessages } from "@/components/ChatMessages";
 import { ChatInput } from "@/components/ChatInput";
-import { SuggestionChips } from "@/components/SuggestionChips-clean";
-import { useChat } from "@/hooks/useChat-clean";
-import { health } from "@/lib/api-clean";
+import { SuggestionChips } from "@/components/SuggestionChips";
+import { useChat } from "@/hooks/useChat";
+import { health } from "@/lib/api";
 import { apiService, ApiError } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
 import { useToast } from "@/hooks/use-toast";
@@ -103,7 +103,7 @@ export default function Chat() {
     suggestCount: 3
   });
 
-  // ✅ 정의 누락으로 터지던 부분 해결
+  // ✅ 기존 ReferenceError: handleFollowupQuestion not defined 해결
   const handleFollowupQuestion = (q: string) => {
     if (isUsingNewChat) {
       newChat.send(q);

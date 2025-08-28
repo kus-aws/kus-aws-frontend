@@ -1,156 +1,55 @@
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useState } from 'react';
 import { streamChat, fetchSuggestions } from '@/lib/api';
-import type { ChatMessage } from '@/lib/types';
 
-interface UseChatParams {
-  major: string;
-  subField: string;
-  suggestCount?: number;
-  conversationId?: string;
-}
+type Msg = { role: 'user' | 'assistant'; text: string };
 
-export function useChat(params: UseChatParams) {
-  const { major, subField, suggestCount = 3 } = params;
-  
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+export function useChat(init: { major: string; subField: string; suggestCount?: number; conversationId?: string }) {
+  const [messages, setMessages] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | undefined>();
+  const [error, setError] = useState<string>();
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [conversationId, setConversationId] = useState(() => {
-    if (params.conversationId) return params.conversationId;
-    
-    const stored = localStorage.getItem('chatConversationId');
-    if (stored) return stored;
-    
-    const newId = crypto.randomUUID();
-    localStorage.setItem('chatConversationId', newId);
-    return newId;
+  const [conversationId, setCid] = useState(() => {
+    if (typeof window === 'undefined') return init.conversationId ?? 'cid-server';
+    const saved = localStorage.getItem('cid');
+    const cid = init.conversationId ?? saved ?? crypto.randomUUID();
+    if (!saved) localStorage.setItem('cid', cid);
+    return cid;
   });
-  
   const controllerRef = useRef<AbortController | null>(null);
-  const cleanupRef = useRef<(() => void) | null>(null);
 
-  // Update localStorage when conversationId changes
-  useEffect(() => {
-    localStorage.setItem('chatConversationId', conversationId);
-  }, [conversationId]);
-
-  const send = async (question: string): Promise<() => void> => {
-    // Clear previous state
+  async function send(q: string) {
     setError(undefined);
     setSuggestions([]);
+    setMessages((m) => [...m, { role: 'user', text: q }, { role: 'assistant', text: '' }]);
     setLoading(true);
 
-    // Add user message and prepare assistant message
-    setMessages(prev => [
-      ...prev,
-      { role: 'user', text: question },
-      { role: 'assistant', text: '' }
-    ]);
+    const ac = new AbortController(); controllerRef.current = ac;
+    const assistantIndex = messages.length + 1;
 
-    // Setup abort controller
-    const abortController = new AbortController();
-    controllerRef.current = abortController;
-
-    const assistantMessageIndex = messages.length + 1;
-
-    try {
-      const cleanup = streamChat({
-        q: question,
-        major,
-        subField,
-        conversationId,
-        signal: abortController.signal,
-        
-        onStart: (cid) => {
-          if (cid !== conversationId) {
-            setConversationId(cid);
-          }
-        },
-        
-        onDelta: (chunk) => {
-          setMessages(prev => {
-            const updated = [...prev];
-            if (updated[assistantMessageIndex]) {
-              updated[assistantMessageIndex] = {
-                ...updated[assistantMessageIndex],
-                text: updated[assistantMessageIndex].text + chunk
-              };
-            }
-            return updated;
-          });
-        },
-        
-        onDone: async () => {
-          setLoading(false);
-          
-          // Fetch suggestions after streaming completes
-          try {
-            const newSuggestions = await fetchSuggestions({
-              conversationId,
-              major,
-              subField,
-              suggestCount
-            });
-            setSuggestions(newSuggestions);
-          } catch (err) {
-            console.warn('Failed to load suggestions:', err);
-            // Don't set error state for suggestions failure
-          }
-        },
-        
-        onError: (message) => {
-          setLoading(false);
-          setError(message || 'Connection error');
-        }
-      });
-
-      cleanupRef.current = cleanup;
-      
-      return () => {
-        cleanup();
+    streamChat({
+      q, major: init.major, subField: init.subField, conversationId,
+      onStart: (cid) => { if (cid !== conversationId) { setCid(cid); localStorage.setItem('cid', cid); } },
+      onDelta: (chunk) => {
+        setMessages((m) => {
+          const copy = [...m];
+          copy[assistantIndex] = { role: 'assistant', text: (copy[assistantIndex]?.text || '') + chunk };
+          return copy;
+        });
+      },
+      onDone: async () => {
         setLoading(false);
-      };
-    } catch (err) {
-      setLoading(false);
-      setError('Failed to start streaming');
-      return () => {};
-    }
-  };
+        try {
+          const sugs = await fetchSuggestions({
+            conversationId, major: init.major, subField: init.subField, suggestCount: init.suggestCount ?? 3,
+          });
+          setSuggestions(sugs);
+        } catch { /* ignore */ }
+      },
+      onError: (msg) => { setLoading(false); setError(msg || 'error'); },
+      signal: ac.signal,
+    });
+  }
 
-  const cancel = () => {
-    if (controllerRef.current) {
-      controllerRef.current.abort();
-      controllerRef.current = null;
-    }
-    
-    if (cleanupRef.current) {
-      cleanupRef.current();
-      cleanupRef.current = null;
-    }
-    
-    setLoading(false);
-  };
-
-  const reset = () => {
-    cancel();
-    setMessages([]);
-    setError(undefined);
-    setSuggestions([]);
-    
-    // Generate new conversation ID
-    const newId = crypto.randomUUID();
-    setConversationId(newId);
-  };
-
-  return {
-    messages,
-    loading,
-    error,
-    suggestions,
-    conversationId,
-    send,
-    cancel,
-    reset
-  };
+  function cancel() { controllerRef.current?.abort(); setLoading(false); }
+  return { messages, loading, error, suggestions, conversationId, send, cancel };
 }
