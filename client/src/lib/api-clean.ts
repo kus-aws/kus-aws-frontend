@@ -1,5 +1,11 @@
 // Clean SSE streaming API for AWS Lambda backend
-const BASE = import.meta.env.NEXT_PUBLIC_BACKEND_BASE!;
+const BASE = import.meta.env.NEXT_PUBLIC_BACKEND_BASE || 'https://2kdtuncj36tas5twwm7dsgpz5y0bkfkw.lambda-url.us-east-1.on.aws';
+
+console.log('🔧 Backend URL:', BASE);
+if (!import.meta.env.NEXT_PUBLIC_BACKEND_BASE) {
+  console.warn('⚠️ NEXT_PUBLIC_BACKEND_BASE not set, using fallback URL');
+  console.log('Available env vars:', Object.keys(import.meta.env).filter(k => k.startsWith('NEXT_PUBLIC')));
+}
 
 export type SSEEvent =
   | { type: 'start'; conversationId: string }
@@ -8,6 +14,7 @@ export type SSEEvent =
   | { type: 'error'; message: string };
 
 export async function health(): Promise<'ok'> {
+  console.log('🔍 Health check URL:', `${BASE}/health`);
   const r = await fetch(`${BASE}/health`, { credentials: 'omit' });
   return r.json();
 }
@@ -24,6 +31,7 @@ export function streamChat(opts: {
   signal?: AbortSignal;
 }) {
   const { q, major, subField, conversationId, onStart, onDelta, onDone, onError, signal } = opts;
+  
   const u = new URL(`${BASE}/chat/stream`);
   u.searchParams.set('q', q);
   u.searchParams.set('major', major);
