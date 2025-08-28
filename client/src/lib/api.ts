@@ -206,9 +206,9 @@ export async function health(): Promise<"ok"> {
     throw new Error(`Health check failed: ${response.status} ${response.statusText}`);
   }
   
-  // Backend returns plain text "ok", not JSON
-  const text = await response.text();
-  return text.trim() as "ok";
+  // Backend returns JSON string "ok"
+  const result = await response.json();
+  return result as "ok";
 }
 
 export function streamChat(params: {
