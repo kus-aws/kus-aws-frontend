@@ -1,6 +1,6 @@
 import { ChatRequest, ChatResponse, FeedbackRequest, HealthResponse, MajorCategory } from "../types/api";
 
-export const API_BASE: string = (import.meta.env.VITE_API_BASE_URL as string) || "https://your-backend-api.com";
+export const API_BASE: string = (import.meta.env.VITE_API_BASE_URL as string) || "https://2kdtuncj36tas5twwm7dsgpz5y0bkfkw.lambda-url.us-east-1.on.aws";
 
 class ApiError extends Error {
   constructor(
