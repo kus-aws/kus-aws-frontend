@@ -1,9 +1,10 @@
 // SSE streaming API for AWS Lambda backend
-const BASE = import.meta.env.NEXT_PUBLIC_BACKEND_BASE?.replace(/\/$/, '') || '';
-if (!BASE) console.warn('NEXT_PUBLIC_BACKEND_BASE not set');
+export const BASE = (import.meta.env.NEXT_PUBLIC_BACKEND_BASE || '').replace(/\/$/, '');
 
-// Export BASE for external validation
-export { BASE };
+// ❗ 어떤 경우에도 origin으로 폴백하지 않음
+if (!BASE) {
+  console.warn('NEXT_PUBLIC_BACKEND_BASE not set');
+}
 
 export type SSEEvent =
   | { type: 'start'; conversationId: string }
@@ -203,83 +204,66 @@ class ApiService {
 export const apiService = new ApiService();
 export default apiService;
 
-export async function health(): Promise<'ok'> {
-  if (!BASE) throw new Error('BACKEND_BASE_NOT_SET');
+export async function health() {
+  if (!BASE) {
+    throw new Error('백엔드 주소 미설정: .env.local의 NEXT_PUBLIC_BACKEND_BASE를 확인하세요.');
+  }
   const r = await fetch(`${BASE}/health`, { credentials: 'omit' });
-  return r.json();
+  // 백엔드가 "ok"를 JSON이 아닌 문자열로 주면 .json() 실패하니 .text()로 받기
+  const t = await r.text().catch(() => ''); 
+  return t; // "ok"
 }
 
 export async function ensureBackend() {
   if (!BASE) {
-    // UI에 친절하게 노출
     throw new Error('백엔드 주소 미설정: .env.local의 NEXT_PUBLIC_BACKEND_BASE를 확인하세요.');
   }
   try {
     const h = await health();
     console.log('Health:', h);
   } catch (e) {
-    console.warn('⚠️ Backend health check failed:', e);
+    console.warn('⚠️ Backend validation failed:', e);
+    throw e;
   }
 }
 
-export function streamChat(opts: {
+export function streamChat(params: {
   q: string; major: string; subField: string; conversationId: string;
-  onStart?: (cid: string) => void;
-  onDelta: (chunk: string) => void;
-  onDone?: () => void;
-  onError?: (msg: string) => void;
-  signal?: AbortSignal;
+  onDelta: (t: string) => void; onStart?: () => void; onDone?: () => void; onError?: (m: string) => void;
 }) {
-  const { q, major, subField, conversationId, onStart, onDelta, onDone, onError, signal } = opts;
+  if (!BASE) throw new Error('BACKEND_BASE_NOT_SET');
+  const url = new URL(`${BASE}/chat/stream`);
+  url.searchParams.set('q', params.q);
+  url.searchParams.set('major', params.major);
+  url.searchParams.set('subField', params.subField);
+  url.searchParams.set('conversationId', params.conversationId);
 
-  if (!BASE) {
-    onError?.('백엔드 주소 미설정: .env.local의 NEXT_PUBLIC_BACKEND_BASE를 확인하세요.');
-    return () => {};
-  }
-
-  // ✅ URLSearchParams로 인코딩 보장
-  const u = new URL(`${BASE}/chat/stream`);
-  u.searchParams.set('q', q);
-  u.searchParams.set('major', major);
-  u.searchParams.set('subField', subField);
-  u.searchParams.set('conversationId', conversationId);
-
-  console.log('🔌 Starting SSE stream:', u.toString());
-  const es = new EventSource(u.toString(), { withCredentials: false });
-  const close = () => es.close();
-  if (signal) signal.addEventListener('abort', close, { once: true });
-
-  es.onopen = () => console.log('✅ SSE open');
+  const es = new EventSource(url.toString(), { withCredentials: false });
   es.onmessage = (e) => {
     try {
-      const data = JSON.parse(e.data) as SSEEvent;
-      if (data.type === 'start') onStart?.(data.conversationId);
-      else if (data.type === 'answer_delta') onDelta(data.text);
-      else if (data.type === 'done') { onDone?.(); es.close(); }
-      else if (data.type === 'error') { onError?.(data.message); es.close(); }
+      const data = JSON.parse(e.data);
+      if (data.type === 'start') params.onStart?.();
+      else if (data.type === 'answer_delta') params.onDelta(data.text || '');
+      else if (data.type === 'done') { params.onDone?.(); es.close(); }
+      else if (data.type === 'error') { params.onError?.(data.message || 'stream error'); es.close(); }
     } catch {
-      onError?.('parse error'); es.close();
+      // 무시
     }
   };
-  es.onerror = (e) => {
-    console.error('🔥 SSE Error:', e, 'readyState:', es.readyState); // 2=CLOSED
-    onError?.('connection error'); es.close();
-  };
-
-  return close; // 호출 측에서 abort용으로 사용
+  es.onerror = () => { params.onError?.('sse connection error'); es.close(); };
+  return () => es.close();
 }
 
 export async function fetchSuggestions(body: {
   conversationId: string; major: string; subField: string; suggestCount: number;
 }): Promise<string[]> {
   if (!BASE) throw new Error('BACKEND_BASE_NOT_SET');
-
   const r = await fetch(`${BASE}/suggestions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
     credentials: 'omit',
+    body: JSON.stringify(body),
   });
-  const j = await r.json().catch(async () => ({ suggestions: [] }));
+  const j = await r.json().catch(() => ({ suggestions: [] }));
   return Array.isArray(j?.suggestions) ? j.suggestions : [];
 }

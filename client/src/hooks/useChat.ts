@@ -28,7 +28,9 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
 
     streamChat({
       q, major: init.major, subField: init.subField, conversationId,
-      onStart: (cid) => { if (cid !== conversationId) { setCid(cid); localStorage.setItem('cid', cid); } },
+      onStart: () => {
+        // Stream started - no conversationId update needed
+      },
       onDelta: (chunk) => {
         setMessages((m) => {
           const copy = [...m];
@@ -46,7 +48,6 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
         } catch { /* ignore */ }
       },
       onError: (msg) => { setLoading(false); setError(msg || 'error'); },
-      signal: ac.signal,
     });
   }
 
