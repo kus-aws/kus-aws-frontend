@@ -192,6 +192,8 @@ npm run build
 - 새로고침 403/404: SPA rewrite 규칙 `/* → /index.html (200)` 추가
 - CORS 에러: 백엔드 Allowed Origin에 Amplify 도메인 포함 여부 확인
 - API 4xx/5xx: API Gateway/CloudWatch 로그로 상세 원인 확인, 프런트 Network 탭 메시지 참조
+- **정적 파일 미제공/JS 번들 노출**: `server/vite.ts`의 `serveStatic()` 함수가 `../dist/public` 경로를 정확히 바라보는지 확인
+- **환경변수 누락**: `VITE_API_BASE_URL`이 설정되지 않으면 API 호출이 실패하여 화면이 정상 동작하지 않음
 
 ### 운영자 수행 체크리스트 (당신이 할 일)
 1) Invoke URL/스테이지 확정 [필수]
