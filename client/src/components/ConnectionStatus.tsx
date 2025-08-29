@@ -1,23 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Wifi, WifiOff, AlertCircle } from 'lucide-react';
-import { apiService } from '@/services/api';
+import { health } from '@/lib/api';
+import { useOnline } from '@/hooks/useOnline';
 
 export function ConnectionStatus() {
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const isOnline = useOnline();
   const [serverStatus, setServerStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
-
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   useEffect(() => {
     const checkServerStatus = async () => {
@@ -28,8 +16,8 @@ export function ConnectionStatus() {
 
       setServerStatus('checking');
       try {
-        const isConnected = await apiService.testConnection();
-        setServerStatus(isConnected ? 'connected' : 'disconnected');
+        await health();
+        setServerStatus('connected');
       } catch {
         setServerStatus('disconnected');
       }
