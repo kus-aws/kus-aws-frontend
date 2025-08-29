@@ -6,17 +6,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Send, RotateCcw, Lightbulb, Loader2, AlertCircle, RefreshCw, Search, Bookmark, Upload, Star } from "lucide-react";
 import { getMajorCategoryById, getSubCategoryById } from "@/data/categories";
-import { ChatRequest } from "@/services/api";
 import { TypingAnimation } from "@/components/TypingAnimation";
 import { MessageFeedback } from "@/components/MessageFeedback";
 import { ConnectionStatus } from "@/components/ConnectionStatus";
-import { FollowupChips } from "@/components/FollowupChips";
-import { StreamingMessage, TutorState } from "@/components/StreamingMessage";
-import { connectStream, fetchSuggestions } from "@/lib/streaming";
-// Removed SSE streaming components - using existing REST API
-import { BASE, ensureBackend, api } from "@/lib/api";
-import { apiService, ApiError } from "@/services/api";
-import { useApi } from "@/hooks/useApi";
+import { SuggestionChips } from "@/components/SuggestionChips";
+// New clean API implementation
+import * as api from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 // Define message interface
 interface EnhancedMessage {
@@ -76,24 +71,19 @@ export default function Chat() {
   
   // Backend validation on mount
   useEffect(() => {
-    ensureBackend().catch(err => {
+    api.ensureBackend().catch(err => {
       console.error('❌ Backend validation failed:', err);
       toast({
-        title: "백엔드 연결 오류",
+        title: "백엔드 연결 오류", 
         description: err.message || "백엔드 서버에 연결할 수 없습니다.",
         variant: "destructive",
       });
     });
   }, [toast]);
-  const [chatState, setChatState] = useState<ChatState>({
-    messages: [],
-    sessionId: `session-${Date.now()}`,
-    isTyping: false,
-    error: null,
-    lastAIMessageId: null,
-  });
+  const [messages, setMessages] = useState<EnhancedMessage[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [inputMessage, setInputMessage] = useState("");
-  const [currentTypingMessage, setCurrentTypingMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
@@ -124,30 +114,11 @@ export default function Chat() {
   
   // Removed newChat - using existing REST API system only
 
-  // ✅ 기존 ReferenceError: handleFollowupQuestion not defined 해결
-  const handleFollowupQuestion = (q: string) => {
-    setInputMessage('');
-    handleSendMessage(q);
-  };
-  
-  // SSE 스트리밍 상태 (legacy)
-  const [tutorState, setTutorState] = useState<TutorState>({
-    conversationId: `session-${Date.now()}`,
-    answer: "",
-    isStreaming: false,
-    suggestions: [],
-    isLoadingSuggestions: false,
-  });
-  const [streamCleanup, setStreamCleanup] = useState<(() => void) | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [bookmarkOpen, setBookmarkOpen] = useState(false);
-  // const [fileUploadOpen, setFileUploadOpen] = useState(false);"}
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  // const { updateProgress, addBookmark } = useUserStore();
-  // const { preferences } = useTheme();
   
-  const chatApi = useApi<ChatResponse>();
+  const handleFollowupQuestion = (q: string) => {
+    onSend(q);
+  };
 
   const majorCategory = useMemo(() => 
     params?.majorId ? getMajorCategoryById(params.majorId) : null, 
@@ -182,157 +153,78 @@ export default function Chat() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [chatState.messages]);
+  }, [messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const handleSendMessage = async (messageContent?: string) => {
-    const message = messageContent || inputMessage.trim();
-    if (!message || isLoading) return;
+  // Core send function using new API
+  async function onSend(userQuestion: string) {
+    if (!userQuestion.trim() || isLoading) return;
     if (!params?.majorId || !params?.subId) return;
 
+    setIsLoading(true);
+    setError(null);
+    setSuggestions([]);
+    
+    // Add user message
     const userMessage: EnhancedMessage = {
       id: `user-${Date.now()}`,
-      content: message,
+      content: userQuestion,
       sender: "user",
       timestamp: new Date(),
     };
-
-    // Add user message and reset states
-    setChatState(prev => ({
-      ...prev,
-      messages: [...prev.messages, userMessage],
-      error: null,
-      lastAIMessageId: null,
-    }));
-
-    // Clear input if using input field
-    if (!messageContent) {
-      setInputMessage("");
-    }
-
-    // Reset tutor state for new streaming
-    setTutorState(prev => ({
-      ...prev,
-      answer: "",
-      isStreaming: false,
-      suggestions: [],
-      isLoadingSuggestions: false,
-      streamError: undefined,
-      suggestionsError: undefined,
-    }));
-
-    // Cleanup previous stream if exists
-    if (streamCleanup) {
-      streamCleanup();
-      setStreamCleanup(null);
-    }
-
-    // Use new /chat POST endpoint  
-    setIsLoading(true);
-    setError(null);
+    
+    setMessages(prev => [...prev, userMessage]);
+    
     try {
-      const response = await api.chat({
-        userQuestion: message,
+      const res = await api.chat({
+        userQuestion,
         major: params.majorId,
         subField: params.subId,
-        conversationId: chatState.sessionId,
+        conversationId: conversationId ?? undefined,
+        followupMode: 'single',
         suggestCount: 3,
-        followupMode: "multi"
       });
 
+      setConversationId(res.conversationId);
+      
+      // Add AI response
       const aiMessage: EnhancedMessage = {
         id: `ai-${Date.now()}`,
-        content: response.aiResponse,
+        content: String(res.aiResponse ?? ''),
         sender: "ai",
         timestamp: new Date(),
-        suggestions: response.suggestions,
+        suggestions: res.suggestions,
       };
       
-      setChatState(prev => ({
-        ...prev,
-        messages: [...prev.messages, aiMessage],
-        lastAIMessageId: aiMessage.id,
-      }));
+      setMessages(prev => [...prev, aiMessage]);
+
+      // Set suggestions for display
+      if (Array.isArray(res.suggestions) && res.suggestions.length) {
+        setSuggestions(res.suggestions);
+      }
       
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "잠시 후 다시 시도해주세요.";
-      console.error('Chat error:', err);
+    } catch (e: any) {
+      const errorMessage = `[API] 요청 실패: ${e?.message ?? String(e)}`;
       setError(errorMessage);
       toast({
-        title: "메시지 전송 실패", 
+        title: "메시지 전송 실패",
         description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
-    
-    /* OLD SSE CODE:
-    const cleanup = connectStream({
-      baseUrl: BASE,
-      q: message,
-      major: params.majorId,
-      subField: params.subId,
-      conversationId: tutorState.conversationId,
-      
-      onStart: (cid) => {
-        setTutorState(prev => ({
-          ...prev,
-          conversationId: cid,
-          isStreaming: true,
-        }));
-      },
-      
-      onDelta: (text) => {
-        setTutorState(prev => ({
-          ...prev,
-          answer: prev.answer + text,
-        }));
-      },
-      
-      onDone: () => {
-        setTutorState(prev => ({ ...prev, isStreaming: false }));
-        
-        // Add AI message to chat history
-        setTimeout(() => {
-          const currentAnswer = tutorState.answer;
-          const aiMessage: EnhancedMessage = {
-            id: `ai-${Date.now()}`,
-            content: currentAnswer,
-            sender: "ai",
-            timestamp: new Date(),
-          };
-          
-          setChatState(prev => ({
-            ...prev,
-            messages: [...prev.messages, aiMessage],
-            lastAIMessageId: aiMessage.id,
-          }));
-          
-          // Load suggestions
-          loadSuggestions();
-        }, 100);
-      },
-      
-      onError: (error) => {
-        setTutorState(prev => ({
-          ...prev,
-          isStreaming: false,
-          streamError: error,
-        }));
-        
-        toast({
-          title: "연결 오류",
-          description: error,
-          variant: "destructive",
-        });
-      },
-    }); 
-    setStreamCleanup(() => cleanup);
-    */
+  }
+
+  const handleSendMessage = async (messageContent?: string) => {
+    const message = messageContent || inputMessage.trim();
+    if (!messageContent) {
+      setInputMessage("");
+    }
+    await onSend(message);
   };
 
   const handleTypingComplete = () => {
@@ -366,25 +258,10 @@ export default function Chat() {
         timestamp: new Date(),
       };
 
-      const newSessionId = `session-${Date.now()}`;
-      setChatState({
-        messages: [welcomeMessage],
-        sessionId: newSessionId,
-        isTyping: false,
-        error: null,
-        lastAIMessageId: null,
-      });
-      
-      setTutorState(prev => ({
-        ...prev,
-        conversationId: newSessionId,
-        answer: "",
-        isStreaming: false,
-        suggestions: [],
-        isLoadingSuggestions: false,
-        streamError: undefined,
-        suggestionsError: undefined,
-      }));
+      setMessages([welcomeMessage]);
+      setConversationId(null);
+      setSuggestions([]);
+      setError(null);
       
       setCurrentTypingMessage(null);
       chatApi.reset();
@@ -620,7 +497,7 @@ export default function Chat() {
             <Card className="mb-6 bg-white">
               <CardContent className="p-0">
                 <div className="h-96 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
-              {chatState.messages.map((message) => (
+              {messages.map((message) => (
                 <div
                   key={message.id}
                   className={`flex ${
@@ -734,6 +611,12 @@ export default function Chat() {
                   </div>
                 </div>
               )}
+
+              {/* Suggestions */}
+              <SuggestionChips 
+                items={suggestions} 
+                onSelect={handleFollowupQuestion} 
+              />
               
               <div ref={messagesEndRef} />
             </div>
