@@ -12,7 +12,8 @@
       "Bash(vercel env add:*)",
       "Bash(vercel link:*)",
       "Bash(vercel env:*)",
-      "Bash(vercel:*)"
+      "Bash(vercel:*)",
+      "Bash(npx vite:*)"
     ],
     "deny": [],
     "ask": []

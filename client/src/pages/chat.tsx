@@ -96,6 +96,30 @@ export default function Chat() {
   const [currentTypingMessage, setCurrentTypingMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
+  
+  const loadingMessages = [
+    "AI가 답변을 생성하고 있어요...",
+    "최적의 답변을 찾고 있어요...",
+    "곧 완료됩니다..."
+  ];
+  
+  // Loading message rotation effect
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingMessageIndex(0);
+      return;
+    }
+    
+    const interval = setInterval(() => {
+      setLoadingMessageIndex((prevIndex) => 
+        (prevIndex + 1) % loadingMessages.length
+      );
+    }, 2000); // Change message every 2 seconds
+    
+    return () => clearInterval(interval);
+  }, [isLoading, loadingMessages.length]);
+  
   // Removed SSE streaming mode - using REST API only
   
   // Removed newChat - using existing REST API system only
@@ -673,6 +697,22 @@ export default function Chat() {
                 </div>
               )}
               
+              {/* AI Loading Message */}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-blue-50 text-blue-800 px-4 py-3 rounded-lg shadow-sm max-w-xs lg:max-w-md">
+                    <div className="flex items-center space-x-2">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                      </div>
+                      <span className="text-sm">{loadingMessages[loadingMessageIndex]}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* SSE Streaming Message - Backup for future use */}
               {/*
               {(tutorState.isStreaming || tutorState.answer || tutorState.streamError) && (
