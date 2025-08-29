@@ -7,7 +7,7 @@ const USE_LAMBDA_DIRECT = true; // Toggle flag for easy rollback
 export const BASE = (
   import.meta.env.VITE_BACKEND_BASE || 
   import.meta.env.NEXT_PUBLIC_BACKEND_BASE || ''
-).replace(/\/$/, '');
+).replace('/$/', '');
 
 export class ApiError extends Error {
   constructor(
@@ -19,6 +19,22 @@ export class ApiError extends Error {
     this.name = 'ApiError';
   }
 }
+
+// Enhanced types for better type safety
+export type ChatBody = {
+  userQuestion: string;
+  major: string;
+  subField: string;
+  conversationId?: string;
+  followupMode?: "never" | "single" | "multi";
+  suggestCount?: number;
+};
+
+export type ChatResp = {
+  aiResponse: string;
+  conversationId: string;
+  suggestions?: string[] | null;
+};
 
 function mustBase() {
   if (!BASE) throw new Error('백엔드 주소 미설정: .env(또는 Vercel env)의 VITE_BACKEND_BASE를 확인하세요.');
@@ -50,13 +66,31 @@ async function fetchJSON(url: string, init: RequestInit, timeoutMs = 30000) {
     
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status} ${res.statusText} :: ${text}`);
+      throw new Error(`HTTP ${res.status} ${text || "Internal Server Error"}`);
     }
     
     return res.json();
   } finally {
     clearTimeout(id);
   }
+}
+
+// Safe JSON parsing with fallback
+function safeJsonParse(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    console.warn('[api] JSON parse failed, using fallback:', error);
+    return null;
+  }
+}
+
+// Normalize suggestions array
+function normalizeSuggestions(suggestions: unknown): string[] {
+  if (!Array.isArray(suggestions)) return [];
+  return suggestions
+    .filter(item => typeof item === 'string' && item.trim())
+    .slice(0, 5); // 최대 5개로 제한
 }
 
 export async function health() {
@@ -85,16 +119,11 @@ export async function health() {
   }
 }
 
-type ChatResp = { aiResponse: string; conversationId: string; suggestions?: string[] | null };
-
 function isChatResp(x: any): x is ChatResp {
   return x && typeof x.aiResponse === 'string' && typeof x.conversationId === 'string';
 }
 
-export async function chat(body: {
-  userQuestion: string; major: string; subField: string;
-  conversationId?: string; followupMode?: 'never' | 'single' | 'multi'; suggestCount?: number;
-}): Promise<ChatResp> {
+export async function chat(body: ChatBody): Promise<ChatResp> {
   // Input validation
   if (!body.userQuestion?.trim()) {
     throw new ApiError('질문을 입력해주세요.');
@@ -112,15 +141,32 @@ export async function chat(body: {
       console.log('[chat] Lambda direct call to:', `${LAMBDA_URL}/chat`);
       console.log('[chat] Request payload:', body);
       
-      const response = await fetchJSON(`${LAMBDA_URL}/chat`, {
+      const r = await fetch(`${LAMBDA_URL}/chat`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'x-trace-id': makeTraceId(),
         },
         body: JSON.stringify(body),
-      }, 60000); // 60초 타임아웃
+        credentials: 'omit',
+      });
+
+      // Get response as text first (preserve error messages)
+      const text = await r.text();
+      console.log('[chat] Lambda raw response:', text);
       
-      console.log('[chat] Lambda response:', response);
+      if (!r.ok) {
+        throw new Error(`HTTP ${r.status} ${text || "Internal Server Error"}`);
+      }
+
+      // Safe JSON parsing
+      const response = safeJsonParse(text);
+      if (!response) {
+        throw new ApiError('Lambda 응답을 파싱할 수 없습니다.');
+      }
+      
+      console.log('[chat] Lambda parsed response:', response);
       
       if (!isChatResp(response)) {
         console.warn('[chat] invalid response shape:', response);
@@ -131,7 +177,8 @@ export async function chat(body: {
         };
       }
       
-      if (!Array.isArray(response.suggestions)) response.suggestions = [];
+      // Normalize suggestions
+      response.suggestions = normalizeSuggestions(response.suggestions);
       return response;
       
     } catch (error) {
@@ -194,7 +241,9 @@ export async function chat(body: {
         suggestions: [] 
       };
     }
-    if (!Array.isArray(j.suggestions)) j.suggestions = [];
+    
+    // Normalize suggestions
+    j.suggestions = normalizeSuggestions(j.suggestions);
     return j;
   }
 }
@@ -205,15 +254,28 @@ export async function fetchSuggestions(body: {
   if (USE_LAMBDA_DIRECT) {
     // Direct Lambda call - /suggestions endpoint
     try {
-      const response = await fetchJSON(`${LAMBDA_URL}/suggestions`, {
+      console.log('[suggestions] Lambda direct call to:', `${LAMBDA_URL}/suggestions`);
+      
+      const r = await fetch(`${LAMBDA_URL}/suggestions`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'x-trace-id': makeTraceId(),
         },
         body: JSON.stringify(body),
+        credentials: 'omit',
       });
+
+      const text = await r.text();
+      if (!r.ok) {
+        console.warn('[suggestions] Lambda call failed:', r.status, text);
+        return [];
+      }
+
+      const response = safeJsonParse(text);
+      return normalizeSuggestions(response?.suggestions);
       
-      return Array.isArray(response?.suggestions) ? response.suggestions : [];
     } catch (error) {
       console.error('[suggestions] Lambda direct call failed:', error);
       return [];
@@ -228,7 +290,7 @@ export async function fetchSuggestions(body: {
       credentials: 'omit',
     });
     const j = await r.json().catch(() => ({ suggestions: [] }));
-    return Array.isArray(j?.suggestions) ? j.suggestions : [];
+    return normalizeSuggestions(j?.suggestions);
   }
 }
 
