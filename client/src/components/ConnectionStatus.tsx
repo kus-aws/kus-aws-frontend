@@ -67,11 +67,6 @@ export function ConnectionStatus() {
     );
   }
 
-  // Lambda 직접 호출 모드 안내
-  return (
-    <div className="flex items-center space-x-2 bg-green-50 text-green-700 px-3 py-2 rounded-lg text-sm">
-      <Wifi className="w-4 h-4" />
-      <span>Lambda 직접 연결 모드 (임시 우회)</span>
-    </div>
-  );
+  // 연결 성공 - 메시지 표시 안함 (UI 간소화)
+  return null;
 }
