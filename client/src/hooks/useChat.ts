@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-import { chat } from '@/lib/api';
+import { chat, ChatResp } from '@/lib/api';
 import { usePerformance } from './usePerformance';
 
 type Msg = { role: 'user' | 'assistant'; text: string };
@@ -17,12 +17,22 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
     return cid;
   });
   
+  // 중복 전송 방지
+  const sendingRef = useRef(false);
+  
   // 성능 모니터링 훅 사용
   const { startStreaming, endStreaming } = usePerformance();
 
   async function send(q: string) {
     if (!q.trim()) return;
     
+    // 중복 전송 방지
+    if (sendingRef.current) {
+      console.warn('[useChat] Duplicate send attempt blocked');
+      return;
+    }
+    
+    sendingRef.current = true;
     setError(undefined);
     setSuggestions([]);
     
@@ -43,12 +53,12 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
 
     try {
       // Lambda 직접 호출 모드에서는 일반 채팅 사용
-      const response = await chat({
+      const response: ChatResp = await chat({
         userQuestion: q,
         major: init.major,
         subField: init.subField,
-        conversationId,
-        followupMode: init.suggestCount ? 'multi' : 'never',
+        conversationId, // 연속 대화 유지
+        followupMode: init.suggestCount ? 'multi' : 'single',
         suggestCount: init.suggestCount ?? 3,
       });
 
@@ -61,7 +71,7 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
         return newMessages;
       });
 
-      // conversationId 업데이트
+      // conversationId 업데이트 (연속 대화 유지)
       if (response.conversationId && response.conversationId !== conversationId) {
         setCid(response.conversationId);
         localStorage.setItem('cid', response.conversationId);
@@ -81,18 +91,22 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
       // 에러 발생 시 빈 어시스턴트 메시지 제거
       setMessages(prev => prev.filter((_, i) => i !== assistantIndex));
       endStreaming();
+    } finally {
+      sendingRef.current = false;
     }
   }
 
   const cancel = useCallback(() => { 
     setLoading(false);
     endStreaming();
+    sendingRef.current = false;
   }, [endStreaming]);
 
   // 컴포넌트 언마운트 시 정리
   useEffect(() => {
     return () => {
       endStreaming();
+      sendingRef.current = false;
     };
   }, [endStreaming]);
 
