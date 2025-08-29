@@ -20,9 +20,6 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
   // 중복 전송 방지
   const sendingRef = useRef(false);
   
-  // 레이스 컨디션 방지를 위한 턴 ID
-  const lastTurnRef = useRef<string>('');
-  
   // 성능 모니터링 훅 사용
   const { endStreaming } = usePerformance();
 
@@ -48,20 +45,16 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
       assistantIndex = prev.length;
       return [...prev, { role: 'assistant', text: '' }];
     });
-    
-    // 턴 ID 생성 (레이스 컨디션 방지)
-    const turnId = crypto?.randomUUID?.() ?? String(Date.now());
-    lastTurnRef.current = turnId;
 
     try {
-      // Lambda 직접 호출 모드에서는 일반 채팅 사용
+      // 1단계: 빠른 응답을 위한 /chat 호출
       const response: ChatResp = await chat({
         userQuestion: q,
         major: init.major,
         subField: init.subField,
         conversationId, // 연속 대화 유지
-        followupMode: init.suggestCount ? 'multi' : 'single',
-        suggestCount: init.suggestCount ?? 3,
+        followupMode: "never", // 빠른 응답
+        suggestCount: 0,       // suggestions 없음
       });
 
       // 응답 처리
@@ -79,33 +72,22 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
         localStorage.setItem('cid', response.conversationId);
       }
 
-      // 1차: /chat 내장 suggestions 확인
-      const primarySuggestions = response.suggestions || [];
-      if (primarySuggestions.length > 0) {
-        if (lastTurnRef.current === turnId) {
-          setSuggestions(primarySuggestions);
-        }
-        return;
-      }
-
-      // 2차: 서버 /suggestions API 폴백 (비동기, UI 블로킹 X)
-      if (response.conversationId && lastTurnRef.current === turnId) {
-        try {
-          const fallbackSuggestions = await fetchSuggestions({
-            conversationId: response.conversationId,
-            major: init.major,
-            subField: init.subField,
-            suggestCount: init.suggestCount ?? 3,
-          });
-          
-          // 턴 ID가 여전히 유효한지 확인
-          if (lastTurnRef.current === turnId) {
+      // 2단계: 비동기로 /suggestions 호출 (UI 블로킹 없음)
+      if (response.conversationId) {
+        // suggestions를 별도로 가져오기
+        fetchSuggestions({
+          conversationId: response.conversationId,
+          major: init.major,
+          subField: init.subField,
+          suggestCount: init.suggestCount ?? 3,
+        }).then(fallbackSuggestions => {
+          if (fallbackSuggestions.length > 0) {
             setSuggestions(fallbackSuggestions);
           }
-        } catch (error) {
-          console.warn('[useChat] fetchSuggestions fallback failed:', error);
-          // 폴백 실패는 조용히 처리 (사용자 경험에 영향 없음)
-        }
+        }).catch(error => {
+          console.warn('[useChat] fetchSuggestions failed:', error);
+          // suggestions 실패는 조용히 처리 (사용자 경험에 영향 없음)
+        });
       }
 
       setLoading(false);
