@@ -139,12 +139,8 @@ export default function Chat() {
         timestamp: new Date(),
       };
 
-      setChatState(prev => ({
-        ...prev,
-        messages: [welcomeMessage],
-        error: null,
-        lastAIMessageId: null,
-      }));
+      setMessages([welcomeMessage]);
+      setError(null);
     }
   }, [params?.majorId, params?.subId, majorCategory, subCategory]);
 
