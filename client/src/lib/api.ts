@@ -79,7 +79,10 @@ function normalizeSuggestions(suggestions: unknown): string[] {
 
 export async function health() {
   mustBase();
-  const r = await fetch(`${BASE}/health`, { credentials: 'omit' });
+  const r = await fetch(`${BASE}/health`, { 
+    method: 'GET',
+    credentials: 'omit' 
+  });
   try { 
     return await r.json(); 
   } catch { 
