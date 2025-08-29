@@ -3,7 +3,7 @@ import { useRoute, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Send, RotateCcw, AlertCircle, Lightbulb } from "lucide-react";
+import { ArrowLeft, Send, RotateCcw, AlertCircle, Lightbulb, Loader2 } from "lucide-react";
 import { getMajorCategoryById, getSubCategoryById } from "@/data/categories";
 import { MessageFeedback } from "@/components/MessageFeedback";
 import { SuggestionChips } from "@/components/SuggestionChips";
