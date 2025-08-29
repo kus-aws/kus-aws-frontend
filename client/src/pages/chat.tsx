@@ -14,7 +14,7 @@ import { FollowupChips } from "@/components/FollowupChips";
 import { StreamingMessage, TutorState } from "@/components/StreamingMessage";
 import { connectStream, fetchSuggestions } from "@/lib/streaming";
 // Removed SSE streaming components - using existing REST API
-import { BASE, ensureBackend } from "@/lib/api";
+import { BASE, ensureBackend, api } from "@/lib/api";
 import { apiService, ApiError } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
 import { useToast } from "@/hooks/use-toast";
@@ -94,6 +94,8 @@ export default function Chat() {
   });
   const [inputMessage, setInputMessage] = useState("");
   const [currentTypingMessage, setCurrentTypingMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   // Removed SSE streaming mode - using REST API only
   
   // Removed newChat - using existing REST API system only
@@ -164,7 +166,7 @@ export default function Chat() {
 
   const handleSendMessage = async (messageContent?: string) => {
     const message = messageContent || inputMessage.trim();
-    if (!message || tutorState.isStreaming) return;
+    if (!message || isLoading) return;
     if (!params?.majorId || !params?.subId) return;
 
     const userMessage: EnhancedMessage = {
@@ -204,23 +206,24 @@ export default function Chat() {
       setStreamCleanup(null);
     }
 
-    // SSE streaming disabled - use REST API instead
+    // Use new /chat POST endpoint  
+    setIsLoading(true);
+    setError(null);
     try {
-      const response = await apiService.sendChatMessage({
-        message: message,
-        majorCategory: params.majorId,
-        subCategory: params.subId,
-        sessionId: chatState.sessionId,
+      const response = await api.chat({
+        userQuestion: message,
+        major: params.majorId,
+        subField: params.subId,
+        conversationId: chatState.sessionId,
         suggestCount: 3,
         followupMode: "multi"
       });
 
       const aiMessage: EnhancedMessage = {
-        id: response.id,
-        content: response.content,
+        id: `ai-${Date.now()}`,
+        content: response.aiResponse,
         sender: "ai",
-        timestamp: new Date(response.timestamp),
-        processingTime: response.processingTime,
+        timestamp: new Date(),
         suggestions: response.suggestions,
       };
       
@@ -230,13 +233,17 @@ export default function Chat() {
         lastAIMessageId: aiMessage.id,
       }));
       
-    } catch (error) {
-      console.error('Chat error:', error);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "잠시 후 다시 시도해주세요.";
+      console.error('Chat error:', err);
+      setError(errorMessage);
       toast({
         title: "메시지 전송 실패", 
-        description: "잠시 후 다시 시도해주세요.",
+        description: errorMessage,
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
     
     /* OLD SSE CODE:
@@ -454,7 +461,7 @@ export default function Chat() {
       // Ctrl/Cmd + Enter to send message
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        if (inputMessage.trim() && !tutorState.isStreaming) {
+        if (inputMessage.trim() && !isLoading) {
           handleSendMessage();
         }
       }
@@ -475,7 +482,7 @@ export default function Chat() {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [inputMessage, tutorState.isStreaming]);
+  }, [inputMessage, isLoading]);
 
   const formatProcessingTime = (ms?: number) => {
     if (!ms) return '';
@@ -527,7 +534,7 @@ export default function Chat() {
             </div>
             
             <div className="flex items-center space-x-2">
-              {chatApi.error && (
+              {error && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -667,6 +674,8 @@ export default function Chat() {
               )}
               
               {/* SSE Streaming Message */}
+              {/* Removed SSE streaming message component */}
+              {/* 
               {(tutorState.isStreaming || tutorState.answer || tutorState.streamError) && (
                 <StreamingMessage
                   state={tutorState}
@@ -675,13 +684,14 @@ export default function Chat() {
                   onRetrySuggestions={handleRetrySuggestions}
                 />
               )}
+              */
               
               {/* Error State */}
-              {chatApi.error && (
+              {error && (
                 <div className="flex justify-center">
                   <div className="bg-red-50 text-red-700 px-4 py-2 rounded-lg flex items-center space-x-2">
                     <AlertCircle className="w-4 h-4" />
-                    <span>{chatApi.error}</span>
+                    <span>{error}</span>
                   </div>
                 </div>
               )}
@@ -701,16 +711,16 @@ export default function Chat() {
                 onKeyPress={handleKeyPress}
                 placeholder="궁금한 것을 질문해보세요..."
                 className="flex-1"
-                disabled={chatApi.loading}
+                disabled={isLoading}
                 data-testid="input-message"
               />
               <Button
                 onClick={() => handleSendMessage()}
-                disabled={!inputMessage.trim() || chatApi.loading}
+                disabled={!inputMessage.trim() || isLoading}
                 className="bg-primary text-white"
                 data-testid="button-send"
               >
-                {chatApi.loading ? (
+                {isLoading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Send className="w-4 h-4" />
