@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "cd client && vite",
     "build": "cd client && vite build",
+    "build:vercel": "cd client && npm run build",
     "preview": "cd client && vite preview",
+    "start": "cd client && npm run preview",
     "check": "cd client && tsc"
   },
   "dependencies": {
