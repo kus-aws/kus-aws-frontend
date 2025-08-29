@@ -6,7 +6,7 @@ const LAMBDA_URL = 'https://2kdtuncj36tas5twwm7dsgpz5y0bkfkw.lambda-url.us-east-
 export const BASE = (
   import.meta.env.VITE_BACKEND_BASE || 
   import.meta.env.NEXT_PUBLIC_BACKEND_BASE || 
-  LAMBDA_URL // Lambda Function URL as fallback
+  'https://2kdtuncj36tas5twwm7dsgpz5y0bkfkw.lambda-url.us-east-1.on.aws' // 임시 백엔드 주소
 ).replace('/$/', '');
 
 export class ApiError extends Error {
@@ -114,8 +114,8 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
         major: body.major,
         subField: body.subField,
         conversationId: body.conversationId,
-        followupMode: "multi", // 백엔드 요구사항
-        suggestCount: 3        // 백엔드 요구사항
+        followupMode: body.followupMode || "multi", // 동적으로 설정
+        suggestCount: body.suggestCount || 3        // 동적으로 설정
       }),
       credentials: 'omit',
     });

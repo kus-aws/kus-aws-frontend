@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Send, RotateCcw, AlertCircle, Lightbulb, Loader2, RefreshCw } from "lucide-react";
 import { MessageFeedback } from "@/components/MessageFeedback";
-import { SuggestionChips } from "@/components/SuggestionChips";
+import { MessageSuggestionChips } from "@/components/MessageSuggestionChips";
 import { useChat } from "@/hooks/useChat";
 import { getMajorCategoryById, getSubCategoryById } from "@/data/categories";
 
@@ -220,11 +220,10 @@ export default function Chat() {
                     
                     {/* AI 메시지에 연계 질문 칩 표시 */}
                     {message.role === "assistant" && message.suggestions && message.suggestions.length > 0 && (
-                      <SuggestionChips 
-                        items={message.suggestions} 
-                        onSelect={handleSuggestionClick} 
+                      <MessageSuggestionChips 
+                        suggestions={message.suggestions} 
+                        onSuggestionClick={handleSuggestionClick} 
                         disabled={loading}
-                        className="mt-3"
                       />
                     )}
                     
