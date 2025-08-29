@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, MessageCircle } from "lucide-react";
 import { majorCategories, getMajorCategoryById } from "@/data/categories";
-import { MajorCategory } from "@shared/schema";
+import { MajorCategory } from "@/types/schema";
 
 export default function Categories() {
   const [, params] = useRoute("/categories/:majorId");
@@ -143,11 +143,13 @@ export default function Categories() {
                 </p>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-gray-700">예시 질문:</p>
-                  {subCategory.sampleQuestions.slice(0, 2).map((question, index) => (
+                  {subCategory.sampleQuestions?.slice(0, 2).map((question, index) => (
                     <p key={index} className="text-xs text-gray-500">
                       • {question}
                     </p>
-                  ))}
+                  )) || (
+                    <p className="text-xs text-gray-400">예시 질문이 없습니다</p>
+                  )}
                 </div>
               </CardContent>
             </Card>

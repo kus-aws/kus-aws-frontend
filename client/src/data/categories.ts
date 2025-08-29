@@ -1,4 +1,4 @@
-import { MajorCategory } from "@shared/schema";
+import { MajorCategory } from "@/types/schema";
 
 export const majorCategories: MajorCategory[] = [
   {
