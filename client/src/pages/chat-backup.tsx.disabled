@@ -559,40 +559,39 @@ export default function Chat() {
 
         {/* Chat Interface */}
         <Card className="mb-6 bg-white">
-              <ChatMessages messages={newChat.messages} loading={newChat.loading} />
-              {newChat.error && (
-                <div className="p-4 bg-red-50 border-t border-red-200 text-red-700 text-sm flex items-center justify-between">
-                  <span>❌ {newChat.error}</span>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={() => window.location.reload()}
-                    className="text-red-700 border-red-300 hover:bg-red-100"
-                  >
-                    새로고침
-                  </Button>
-                </div>
-              )}
-              {!newChat.loading && newChat.suggestions.length > 0 && (
-                <SuggestionChips
-                  items={newChat.suggestions}
-                  onSelect={(suggestion) => newChat.send(suggestion)}
-                />
-              )}
-              <ChatInput
-                onSend={(message) => newChat.send(message)}
-                onCancel={newChat.cancel}
-                loading={newChat.loading}
-              />
+          <ChatMessages messages={newChat.messages} loading={newChat.loading} />
+          {newChat.error && (
+            <div className="p-4 bg-red-50 border-t border-red-200 text-red-700 text-sm flex items-center justify-between">
+              <span>❌ {newChat.error}</span>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={() => window.location.reload()}
+                className="text-red-700 border-red-300 hover:bg-red-100"
+              >
+                새로고침
+              </Button>
             </div>
-          </Card>
-        ) : (
-          /* Legacy Chat Interface */
-          <>
-            {/* Chat Messages */}
-            <Card className="mb-6 bg-white">
-              <CardContent className="p-0">
-                <div className="h-96 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
+          )}
+          {!newChat.loading && newChat.suggestions.length > 0 && (
+            <SuggestionChips
+              items={newChat.suggestions}
+              onSelect={(suggestion) => newChat.send(suggestion)}
+            />
+          )}
+          <ChatInput
+            onSend={(message) => newChat.send(message)}
+            onCancel={newChat.cancel}
+            loading={newChat.loading}
+          />
+        </Card>
+      ) : (
+        /* Legacy Chat Interface */
+        <>
+          {/* Chat Messages */}
+          <Card className="mb-6 bg-white">
+            <CardContent className="p-0">
+              <div className="h-96 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
               {chatState.messages.map((message) => (
                 <div
                   key={message.id}
