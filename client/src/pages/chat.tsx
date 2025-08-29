@@ -673,9 +673,8 @@ export default function Chat() {
                 </div>
               )}
               
-              {/* SSE Streaming Message */}
-              {/* Removed SSE streaming message component */}
-              {/* 
+              {/* SSE Streaming Message - Backup for future use */}
+              {/*
               {(tutorState.isStreaming || tutorState.answer || tutorState.streamError) && (
                 <StreamingMessage
                   state={tutorState}
@@ -684,7 +683,7 @@ export default function Chat() {
                   onRetrySuggestions={handleRetrySuggestions}
                 />
               )}
-              */
+              */}
               
               {/* Error State */}
               {error && (
