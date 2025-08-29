@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-import { chat, ChatResp } from '@/lib/api';
+import { chat, fetchSuggestions, ChatResp } from '@/lib/api';
 import { usePerformance } from './usePerformance';
 
 type Msg = { role: 'user' | 'assistant'; text: string };
@@ -20,8 +20,11 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
   // 중복 전송 방지
   const sendingRef = useRef(false);
   
+  // 레이스 컨디션 방지를 위한 턴 ID
+  const lastTurnRef = useRef<string>('');
+  
   // 성능 모니터링 훅 사용
-  const { startStreaming, endStreaming } = usePerformance();
+  const { endStreaming } = usePerformance();
 
   async function send(q: string) {
     if (!q.trim()) return;
@@ -33,7 +36,7 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
     }
     
     sendingRef.current = true;
-    setError(undefined);
+    setLoading(true);
     setSuggestions([]);
     
     // 사용자 메시지 추가
@@ -46,10 +49,9 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
       return [...prev, { role: 'assistant', text: '' }];
     });
     
-    setLoading(true);
-
-    // 성능 모니터링 시작
-    startStreaming();
+    // 턴 ID 생성 (레이스 컨디션 방지)
+    const turnId = crypto?.randomUUID?.() ?? String(Date.now());
+    lastTurnRef.current = turnId;
 
     try {
       // Lambda 직접 호출 모드에서는 일반 채팅 사용
@@ -77,9 +79,33 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
         localStorage.setItem('cid', response.conversationId);
       }
 
-      // 추천 질문 설정
-      if (response.suggestions && response.suggestions.length > 0) {
-        setSuggestions(response.suggestions);
+      // 1차: /chat 내장 suggestions 확인
+      const primarySuggestions = response.suggestions || [];
+      if (primarySuggestions.length > 0) {
+        if (lastTurnRef.current === turnId) {
+          setSuggestions(primarySuggestions);
+        }
+        return;
+      }
+
+      // 2차: 서버 /suggestions API 폴백 (비동기, UI 블로킹 X)
+      if (response.conversationId && lastTurnRef.current === turnId) {
+        try {
+          const fallbackSuggestions = await fetchSuggestions({
+            conversationId: response.conversationId,
+            major: init.major,
+            subField: init.subField,
+            suggestCount: init.suggestCount ?? 3,
+          });
+          
+          // 턴 ID가 여전히 유효한지 확인
+          if (lastTurnRef.current === turnId) {
+            setSuggestions(fallbackSuggestions);
+          }
+        } catch (error) {
+          console.warn('[useChat] fetchSuggestions fallback failed:', error);
+          // 폴백 실패는 조용히 처리 (사용자 경험에 영향 없음)
+        }
       }
 
       setLoading(false);
