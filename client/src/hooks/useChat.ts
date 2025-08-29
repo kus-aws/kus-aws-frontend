@@ -75,9 +75,10 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
       setMessages(prev => {
         const newMessages = [...prev];
         if (newMessages[assistantIndex]) {
-          newMessages[assistantIndex] = { 
+          newMessages[assistantIndex] = {
             ...newMessages[assistantIndex],
-            text: response.aiResponse 
+            text: response.aiResponse,
+            suggestions: response.suggestions || [] // 백엔드에서 suggestions를 함께 제공
           };
         }
         return newMessages;
@@ -89,28 +90,12 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
         localStorage.setItem('cid', response.conversationId);
       }
 
-      // 2단계: 비동기로 /suggestions 호출 (UI 블로킹 없음)
-      if (response.conversationId) {
-        // suggestions를 별도로 가져오기
-        fetchSuggestions({
-          conversationId: response.conversationId,
-          major: init.major,
-          subField: init.subField,
-          suggestCount: init.suggestCount ?? 3,
-        }).then(fallbackSuggestions => {
-          if (fallbackSuggestions.length > 0) {
-            // 해당 메시지에 suggestions 추가
-            setMessages(prev => prev.map(msg => 
-              msg.messageId === assistantMessageId 
-                ? { ...msg, suggestions: fallbackSuggestions }
-                : msg
-            ));
-          }
-        }).catch(error => {
-          console.warn('[useChat] fetchSuggestions failed:', error);
-          // suggestions 실패는 조용히 처리 (사용자 경험에 영향 없음)
-        });
-      }
+      // 백엔드에서 suggestions를 함께 제공하므로 별도 호출 불필요
+      // setMessages(prev => prev.map(msg =>
+      //   msg.messageId === assistantMessageId
+      //     ? { ...msg, suggestions: fallbackSuggestions }
+      //     : msg
+      // ));
 
       setLoading(false);
       endStreaming();

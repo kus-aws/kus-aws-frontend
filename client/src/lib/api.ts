@@ -98,100 +98,122 @@ function isSuggestionsResp(x: any): x is SuggestionsResp {
 
 // ✅ 수정: chat 함수를 빠른 응답 전용으로 변경
 export async function chat(body: ChatBody): Promise<ChatResp> {
-  // Input validation
-  if (!body.userQuestion?.trim()) {
-    throw new ApiError('질문을 입력해주세요.');
-  }
-  if (body.userQuestion.length > 1000) {
-    throw new ApiError('질문은 1000자 이내로 입력해주세요.');
-  }
-  if (!body.major?.trim() || !body.subField?.trim()) {
-    throw new ApiError('전공과 세부 분야를 선택해주세요.');
-  }
-
   mustBase();
-  const r = await fetch(`${BASE}/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      ...body,
-      followupMode: "never", // 항상 빠른 응답
-      suggestCount: 0,       // suggestions 없음
-    }),
-    credentials: 'omit',
-  });
   
-  if (!r.ok) {
-    console.error(`[chat] HTTP ${r.status} ${r.statusText}`);
-    const errorText = await r.text().catch(() => 'No error text');
-    console.error('[chat] Error response:', errorText);
+  try {
+    console.log('[chat] Request payload:', body);
     
-    // Enhanced error messages
-    let errorMessage = '서버 오류가 발생했습니다.';
-    if (r.status === 429) {
-      errorMessage = '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.';
-    } else if (r.status === 502) {
-      errorMessage = '백엔드 서버에 일시적인 문제가 있습니다. 잠시 후 다시 시도해주세요.';
-      console.error('[chat] 502 Bad Gateway - 백엔드 서버 문제 발생');
-      console.error('[chat] 백엔드 개발자에게 다음 정보를 전달하세요:');
-      console.error('[chat] - 오류: 502 Bad Gateway');
-      console.error('[chat] - 엔드포인트: /chat');
-      console.error('[chat] - 응답:', errorText);
-      console.error('[chat] - 시간:', new Date().toISOString());
-    } else if (r.status === 500) {
-      errorMessage = '서버에 일시적인 문제가 있습니다. 잠시 후 다시 시도해주세요.';
-    } else if (r.status === 503) {
-      errorMessage = '서비스가 일시적으로 사용불가합니다. 잠시 후 다시 시도해주세요.';
-    } else if (r.status === 400) {
-      errorMessage = '잘못된 요청입니다. 입력 내용을 확인해주세요.';
-    } else if (r.status >= 500) {
-      errorMessage = '서버 내부 오류가 발생했습니다.';
+    const r = await fetch(`${BASE}/chat`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Accept': 'application/json' 
+      },
+      body: JSON.stringify({
+        userQuestion: body.userQuestion,
+        major: body.major,
+        subField: body.subField,
+        conversationId: body.conversationId,
+        followupMode: "multi", // 백엔드 요구사항
+        suggestCount: 3        // 백엔드 요구사항
+      }),
+      credentials: 'omit',
+    });
+
+    // 에러 로깅 개선 (텍스트/JSON 동시)
+    const ct = r.headers.get("content-type") || "";
+    const raw = await r.text();
+    let data = null;
+    
+    try { 
+      if (ct.includes("application/json")) {
+        data = JSON.parse(raw); 
+      }
+    } catch (e) {
+      console.warn('[chat] JSON parse failed:', e);
     }
-    
-    return { 
-      aiResponse: `죄송합니다. ${errorMessage} (${r.status})`, 
-      conversationId: body.conversationId ?? 'unknown', 
-      suggestions: []
-    };
+
+    if (!r.ok) {
+      console.error('[chat] http', r.status, ct, raw);
+      throw new Error(`HTTP ${r.status}: ${raw || 'Internal Server Error'}`);
+    }
+
+    // 응답 검증
+    if (!data) {
+      throw new Error('서버 응답을 파싱할 수 없습니다.');
+    }
+
+    if (!isChatResp(data)) {
+      console.warn('[chat] invalid response shape:', data);
+      return {
+        aiResponse: '죄송합니다. 일시적인 오류가 발생했습니다.',
+        conversationId: body.conversationId ?? 'unknown',
+        suggestions: []
+      };
+    }
+
+    console.log('[chat] Response:', data);
+    return data;
+
+  } catch (error) {
+    console.error('[chat] Request failed:', error);
+    throw error;
   }
-  
-  const j = await r.json().catch(() => null);
-  if (!isChatResp(j)) {
-    console.warn('[chat] invalid shape:', j);
-    return { 
-      aiResponse: '죄송합니다. 일시적인 오류가 발생했습니다.', 
-      conversationId: body.conversationId ?? 'unknown', 
-      suggestions: []
-    };
-  }
-  
-  // chat 응답에는 suggestions가 없어야 함 (빠른 응답)
-  j.suggestions = [];
-  return j;
 }
 
 // ✅ 수정: fetchSuggestions 함수를 별도로 호출
 export async function fetchSuggestions(body: SuggestionsBody): Promise<string[]> {
   mustBase();
-  const r = await fetch(`${BASE}/suggestions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    credentials: 'omit',
-  });
   
-  if (!r.ok) {
-    console.warn('[suggestions] Backend call failed:', r.status);
-    return [];
+  try {
+    console.log('[suggestions] Request payload:', body);
+    
+    const r = await fetch(`${BASE}/suggestions`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(body),
+      credentials: 'omit',
+    });
+
+    // 에러 로깅 개선 (텍스트/JSON 동시)
+    const ct = r.headers.get("content-type") || "";
+    const raw = await r.text();
+    let data = null;
+    
+    try { 
+      if (ct.includes("application/json")) {
+        data = JSON.parse(raw); 
+      }
+    } catch (e) {
+      console.warn('[suggestions] JSON parse failed:', e);
+    }
+
+    if (!r.ok) {
+      console.error('[suggestions] http', r.status, ct, raw);
+      return []; // suggestions 실패 시 빈 배열 반환
+    }
+
+    // 응답 검증
+    if (!data) {
+      console.warn('[suggestions] No data received');
+      return [];
+    }
+
+    if (!isSuggestionsResp(data)) {
+      console.warn('[suggestions] invalid response shape:', data);
+      return [];
+    }
+
+    console.log('[suggestions] Response:', data);
+    return normalizeSuggestions((data as SuggestionsResp).suggestions);
+
+  } catch (error) {
+    console.error('[suggestions] Request failed:', error);
+    return []; // 에러 시 빈 배열 반환
   }
-  
-  const j = await r.json().catch(() => ({ suggestions: [] }));
-  if (!isSuggestionsResp(j)) {
-    console.warn('[suggestions] invalid response shape:', j);
-    return [];
-  }
-  
-  return normalizeSuggestions(j.suggestions);
 }
 
 // 유틸: 백엔드 사용 전 점검용
