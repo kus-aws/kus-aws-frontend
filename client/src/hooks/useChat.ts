@@ -90,12 +90,30 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
         localStorage.setItem('cid', response.conversationId);
       }
 
-      // 백엔드에서 suggestions를 함께 제공하므로 별도 호출 불필요
-      // setMessages(prev => prev.map(msg =>
-      //   msg.messageId === assistantMessageId
-      //     ? { ...msg, suggestions: fallbackSuggestions }
-      //     : msg
-      // ));
+      // Fallback: 백엔드에서 suggestions가 없으면 별도 호출
+      if ((!response.suggestions || response.suggestions.length === 0) && init.suggestCount && init.suggestCount > 0) {
+        console.log('[useChat] No suggestions in main response, fetching separately...');
+        try {
+          const fallbackSuggestions = await fetchSuggestions({
+            conversationId: response.conversationId,
+            major: init.major,
+            subField: init.subField,
+            suggestCount: init.suggestCount,
+          });
+          
+          if (fallbackSuggestions.length > 0) {
+            console.log('[useChat] Fallback suggestions received:', fallbackSuggestions.length, 'items');
+            setMessages(prev => prev.map(msg =>
+              msg.messageId === assistantMessageId
+                ? { ...msg, suggestions: fallbackSuggestions }
+                : msg
+            ));
+          }
+        } catch (error) {
+          console.warn('[useChat] Fallback suggestions failed:', error);
+          // 조용히 실패 처리 - 사용자 경험에 영향 없음
+        }
+      }
 
       setLoading(false);
       endStreaming();

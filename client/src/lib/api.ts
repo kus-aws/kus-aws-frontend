@@ -153,7 +153,20 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
     }
 
     console.log('[chat] Response:', data);
-    return data;
+    
+    // suggestions 디버깅 로그 추가
+    const validatedData = data as ChatResp;
+    const suggestions = validatedData.suggestions || [];
+    if (suggestions.length === 0) {
+      console.warn('[chat] No suggestions received. Request params were:');
+      console.warn('- followupMode:', body.followupMode || "multi");
+      console.warn('- suggestCount:', body.suggestCount || 3);
+      console.warn('- Backend might not be generating suggestions properly');
+    } else {
+      console.log('[chat] Suggestions received:', suggestions.length, 'items');
+    }
+    
+    return validatedData;
 
   } catch (error) {
     console.error('[chat] Request failed:', error);

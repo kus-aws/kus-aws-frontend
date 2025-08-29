@@ -199,7 +199,14 @@ export default function Chat() {
         <Card className="mb-6 bg-white">
           <CardContent className="p-0">
             <div className="h-96 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
-              {messages.map((message, index) => (
+              {messages
+                .filter(message => 
+                  // Show user messages always
+                  message.role === "user" || 
+                  // Show assistant messages only if they have content or we're not loading
+                  (message.role === "assistant" && (message.text.trim() || !loading))
+                )
+                .map((message, index) => (
                 <div
                   key={message.messageId}
                   className={`flex ${
@@ -227,8 +234,8 @@ export default function Chat() {
                       />
                     )}
                     
-                    {/* Actions for AI messages */}
-                    {message.role === "assistant" && (
+                    {/* Actions for AI messages - Only show when message has content and not loading */}
+                    {message.role === "assistant" && message.text.trim() && !loading && (
                       <div className="mt-2">
                         <MessageFeedback 
                           messageId={message.messageId}
@@ -245,10 +252,14 @@ export default function Chat() {
               {/* Loading indicator */}
               {loading && (
                 <div className="flex justify-start">
-                  <div className="bg-gray-100 text-gray-800 px-4 py-2 rounded-lg shadow-sm max-w-xs lg:max-w-md">
-                    <div className="flex items-center space-x-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span className="text-sm">AI가 답변을 생성하고 있습니다...</span>
+                  <div className="bg-gray-100 text-gray-800 px-4 py-3 rounded-lg shadow-sm max-w-xs lg:max-w-md">
+                    <div className="flex items-center space-x-3">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                      </div>
+                      <span className="text-sm text-gray-600">AI가 답변을 생성하고 있습니다...</span>
                     </div>
                   </div>
                 </div>
