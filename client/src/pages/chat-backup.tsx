@@ -13,7 +13,10 @@ import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { FollowupChips } from "@/components/FollowupChips";
 import { StreamingMessage, TutorState } from "@/components/StreamingMessage";
 import { connectStream, fetchSuggestions } from "@/lib/streaming";
-// Removed SSE streaming components - using existing REST API
+import { ChatMessages } from "@/components/ChatMessages";
+import { ChatInput } from "@/components/ChatInput";
+import { SuggestionChips } from "@/components/SuggestionChips";
+import { useChat } from "@/hooks/useChat";
 import { BASE, ensureBackend } from "@/lib/api";
 import { apiService, ApiError } from "@/services/api";
 import { useApi } from "@/hooks/useApi";
@@ -96,7 +99,12 @@ export default function Chat() {
   const [currentTypingMessage, setCurrentTypingMessage] = useState<string | null>(null);
   // Removed SSE streaming mode - using REST API only
   
-  // Removed newChat - using existing REST API system only
+  // New SSE chat hook
+  const newChat = useChat({
+    major: params?.majorId || '',
+    subField: params?.subId || '',
+    suggestCount: 3
+  });
 
   // ✅ 기존 ReferenceError: handleFollowupQuestion not defined 해결
   const handleFollowupQuestion = (q: string) => {
@@ -549,7 +557,38 @@ export default function Chat() {
         </Card>
 
 
-        {/* Main Chat Interface */}
+        {/* Chat Interface */}
+        <Card className="mb-6 bg-white">
+              <ChatMessages messages={newChat.messages} loading={newChat.loading} />
+              {newChat.error && (
+                <div className="p-4 bg-red-50 border-t border-red-200 text-red-700 text-sm flex items-center justify-between">
+                  <span>❌ {newChat.error}</span>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => window.location.reload()}
+                    className="text-red-700 border-red-300 hover:bg-red-100"
+                  >
+                    새로고침
+                  </Button>
+                </div>
+              )}
+              {!newChat.loading && newChat.suggestions.length > 0 && (
+                <SuggestionChips
+                  items={newChat.suggestions}
+                  onSelect={(suggestion) => newChat.send(suggestion)}
+                />
+              )}
+              <ChatInput
+                onSend={(message) => newChat.send(message)}
+                onCancel={newChat.cancel}
+                loading={newChat.loading}
+              />
+            </div>
+          </Card>
+        ) : (
+          /* Legacy Chat Interface */
+          <>
             {/* Chat Messages */}
             <Card className="mb-6 bg-white">
               <CardContent className="p-0">
@@ -666,16 +705,16 @@ export default function Chat() {
                 onKeyPress={handleKeyPress}
                 placeholder="궁금한 것을 질문해보세요..."
                 className="flex-1"
-                disabled={chatApi.loading}
+                disabled={tutorState.isStreaming}
                 data-testid="input-message"
               />
               <Button
                 onClick={() => handleSendMessage()}
-                disabled={!inputMessage.trim() || chatApi.loading}
+                disabled={!inputMessage.trim() || tutorState.isStreaming}
                 className="bg-primary text-white"
                 data-testid="button-send"
               >
-                {chatApi.loading ? (
+                {tutorState.isStreaming ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Send className="w-4 h-4" />
@@ -695,6 +734,8 @@ export default function Chat() {
             </div>
           </CardContent>
         </Card>
+          </>
+        )}
       </div>
     </div>
   );

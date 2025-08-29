@@ -8,7 +8,11 @@
       "Bash(npm start)",
       "Bash(npm run:*)",
       "Bash(chmod:*)",
-      "Bash(npm install)"
+      "Bash(npm install)",
+      "Bash(vercel env add:*)",
+      "Bash(vercel link:*)",
+      "Bash(vercel env:*)",
+      "Bash(vercel:*)"
     ],
     "deny": [],
     "ask": []
