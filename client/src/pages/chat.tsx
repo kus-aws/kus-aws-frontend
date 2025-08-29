@@ -4,10 +4,57 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Send, RotateCcw, AlertCircle, Lightbulb, Loader2, RefreshCw } from "lucide-react";
-import { getMajorCategoryById, getSubCategoryById } from "@/data/categories";
 import { MessageFeedback } from "@/components/MessageFeedback";
 import { SuggestionChips } from "@/components/SuggestionChips";
 import { useChat } from "@/hooks/useChat";
+
+// 임시 카테고리 데이터 (categories.ts가 비활성화됨)
+const TEMP_MAJOR_CATEGORIES = {
+  'economics': { name: '경제학', emoji: '💰' },
+  'mathematics': { name: '수학', emoji: '📐' },
+  'computer-science': { name: '컴퓨터공학', emoji: '💻' }
+};
+
+const TEMP_SUB_CATEGORIES = {
+  'economics': {
+    'macroeconomics': { 
+      name: '거시경제학',
+      sampleQuestions: [
+        'GDP가 무엇인지 설명해주세요',
+        '인플레이션의 원인은?',
+        '통화정책과 재정정책의 차이는?'
+      ]
+    }
+  },
+  'mathematics': {
+    'statistics': { 
+      name: '통계학',
+      sampleQuestions: [
+        '신뢰구간이 무엇인지 알려주세요',
+        '표준편차의 의미는?',
+        '가설검정 과정을 설명해주세요'
+      ]
+    }
+  },
+  'computer-science': {
+    'algorithms': { 
+      name: '알고리즘',
+      sampleQuestions: [
+        '버블정렬의 시간복잡도는?',
+        '이진탐색트리의 특징을 설명해주세요',
+        '동적계획법이 무엇인지 알려주세요'
+      ]
+    }
+  }
+};
+
+function getMajorCategoryById(id: string) {
+  return TEMP_MAJOR_CATEGORIES[id as keyof typeof TEMP_MAJOR_CATEGORIES];
+}
+
+function getSubCategoryById(majorId: string, subId: string) {
+  return TEMP_SUB_CATEGORIES[majorId as keyof typeof TEMP_SUB_CATEGORIES]?.[subId];
+}
 
 export default function Chat() {
   const [, params] = useRoute("/chat/:majorId/:subId");
