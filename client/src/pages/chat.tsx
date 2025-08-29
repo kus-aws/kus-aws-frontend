@@ -3,12 +3,9 @@ import { useRoute, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Send, RotateCcw, Lightbulb, Loader2, AlertCircle, RefreshCw, Search, Bookmark, Upload, Star } from "lucide-react";
+import { ArrowLeft, Send, RotateCcw, AlertCircle } from "lucide-react";
 import { getMajorCategoryById, getSubCategoryById } from "@/data/categories";
-import { TypingAnimation } from "@/components/TypingAnimation";
 import { MessageFeedback } from "@/components/MessageFeedback";
-import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { SuggestionChips } from "@/components/SuggestionChips";
 // New clean API implementation
 import * as api from "@/lib/api";
@@ -227,27 +224,7 @@ export default function Chat() {
     await onSend(message);
   };
 
-  const handleTypingComplete = () => {
-    if (currentTypingMessage && chatApi.data) {
-      const aiMessage: EnhancedMessage = {
-        id: chatApi.data.id,
-        content: currentTypingMessage,
-        sender: "ai",
-        timestamp: new Date(chatApi.data.timestamp),
-        processingTime: chatApi.data.processingTime,
-        suggestions: chatApi.data.suggestions,
-      };
-
-      setChatState(prev => ({
-        ...prev,
-        messages: [...prev.messages, aiMessage],
-        isTyping: false,
-        lastAIMessageId: aiMessage.id,
-      }));
-      
-      setCurrentTypingMessage(null);
-    }
-  };
+  // Removed handleTypingComplete - not needed with new API
 
   const handleClearChat = () => {
     if (majorCategory && subCategory) {
@@ -262,14 +239,11 @@ export default function Chat() {
       setConversationId(null);
       setSuggestions([]);
       setError(null);
-      
-      setCurrentTypingMessage(null);
-      chatApi.reset();
     }
   };
 
   const handleRetryLastMessage = () => {
-    const lastUserMessage = [...chatState.messages]
+    const lastUserMessage = [...messages]
       .reverse()
       .find(msg => msg.sender === 'user');
     
@@ -320,8 +294,8 @@ export default function Chat() {
   };
   
   const handleRetryStream = () => {
-    if (chatState.messages.length > 0) {
-      const lastUserMessage = [...chatState.messages]
+    if (messages.length > 0) {
+      const lastUserMessage = [...messages]
         .reverse()
         .find(msg => msg.sender === 'user');
       if (lastUserMessage) {
@@ -561,18 +535,6 @@ export default function Chat() {
                 </div>
               ))}
               
-              {/* Typing Animation */}
-              {chatState.isTyping && currentTypingMessage && (
-                <div className="flex justify-start">
-                  <div className="bg-gray-100 text-gray-800 px-4 py-2 rounded-lg shadow-sm max-w-xs lg:max-w-md">
-                    <TypingAnimation
-                      text={currentTypingMessage}
-                      speed={30}
-                      onComplete={handleTypingComplete}
-                    />
-                  </div>
-                </div>
-              )}
               
               {/* AI Loading Message */}
               {isLoading && (
