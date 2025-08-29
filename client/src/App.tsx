@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 
 // Lazy load pages
 const Home = lazy(() => import("./pages/home"));
+const Categories = lazy(() => import("./pages/categories"));
 const Chat = lazy(() => import("./pages/chat"));
 const NotFound = lazy(() => import("./pages/not-found"));
 
@@ -16,6 +17,8 @@ function App() {
       <Suspense fallback={<div>Loading...</div>}>
         <Switch>
           <Route path="/" component={Home} />
+          <Route path="/categories" component={Categories} />
+          <Route path="/categories/:majorId" component={Categories} />
           <Route path="/chat/:majorId/:subId" component={Chat} />
           <Route component={NotFound} />
         </Switch>

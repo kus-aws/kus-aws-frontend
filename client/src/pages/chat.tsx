@@ -7,54 +7,7 @@ import { ArrowLeft, Send, RotateCcw, AlertCircle, Lightbulb, Loader2, RefreshCw 
 import { MessageFeedback } from "@/components/MessageFeedback";
 import { SuggestionChips } from "@/components/SuggestionChips";
 import { useChat } from "@/hooks/useChat";
-
-// 임시 카테고리 데이터 (categories.ts가 비활성화됨)
-const TEMP_MAJOR_CATEGORIES = {
-  'economics': { name: '경제학', emoji: '💰' },
-  'mathematics': { name: '수학', emoji: '📐' },
-  'computer-science': { name: '컴퓨터공학', emoji: '💻' }
-};
-
-const TEMP_SUB_CATEGORIES = {
-  'economics': {
-    'macroeconomics': { 
-      name: '거시경제학',
-      sampleQuestions: [
-        'GDP가 무엇인지 설명해주세요',
-        '인플레이션의 원인은?',
-        '통화정책과 재정정책의 차이는?'
-      ]
-    }
-  },
-  'mathematics': {
-    'statistics': { 
-      name: '통계학',
-      sampleQuestions: [
-        '신뢰구간이 무엇인지 알려주세요',
-        '표준편차의 의미는?',
-        '가설검정 과정을 설명해주세요'
-      ]
-    }
-  },
-  'computer-science': {
-    'algorithms': { 
-      name: '알고리즘',
-      sampleQuestions: [
-        '버블정렬의 시간복잡도는?',
-        '이진탐색트리의 특징을 설명해주세요',
-        '동적계획법이 무엇인지 알려주세요'
-      ]
-    }
-  }
-};
-
-function getMajorCategoryById(id: string) {
-  return TEMP_MAJOR_CATEGORIES[id as keyof typeof TEMP_MAJOR_CATEGORIES];
-}
-
-function getSubCategoryById(majorId: string, subId: string) {
-  return TEMP_SUB_CATEGORIES[majorId as keyof typeof TEMP_SUB_CATEGORIES]?.[subId];
-}
+import { getMajorCategoryById, getSubCategoryById } from "@/data/categories";
 
 export default function Chat() {
   const [, params] = useRoute("/chat/:majorId/:subId");
@@ -223,7 +176,7 @@ export default function Chat() {
               <h3 className="font-semibold text-amber-800">질문 예시</h3>
             </div>
             <div className="flex flex-wrap gap-2">
-              {subCategory.sampleQuestions.map((question: string, index: number) => (
+              {subCategory.sampleQuestions?.map((question: string, index: number) => (
                 <Button
                   key={index}
                   variant="outline"
@@ -235,7 +188,9 @@ export default function Chat() {
                 >
                   {question}
                 </Button>
-              ))}
+              )) || (
+                <p className="text-sm text-gray-500">예시 질문이 없습니다</p>
+              )}
             </div>
           </CardContent>
         </Card>
