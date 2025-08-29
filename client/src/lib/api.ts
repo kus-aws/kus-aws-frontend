@@ -238,7 +238,7 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
       return { 
         aiResponse: '죄송합니다. 일시적인 오류가 발생했습니다.', 
         conversationId: body.conversationId ?? 'unknown', 
-        suggestions: [] 
+        suggestions: []
       };
     }
     
@@ -248,8 +248,12 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
   }
 }
 
+// ✅ 새로 추가: 서버의 /suggestions 호출
 export async function fetchSuggestions(body: {
-  conversationId: string; major: string; subField: string; suggestCount: number;
+  conversationId: string;
+  major: string;
+  subField: string;
+  suggestCount: number; // 1~5
 }): Promise<string[]> {
   if (USE_LAMBDA_DIRECT) {
     // Direct Lambda call - /suggestions endpoint
@@ -320,6 +324,7 @@ export async function ensureBackend() {
 export const api = {
   health,
   chat,
+  fetchSuggestions,
   faq: async (subField: string) => ({ faqs: [] }), // Placeholder
 };
 
