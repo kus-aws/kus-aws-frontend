@@ -44,6 +44,14 @@ export type SuggestionsResp = {
   suggestions: string[];
 };
 
+// 타임아웃 에러 타입 추가
+export type TimeoutError = {
+  detail: {
+    error: "bedrock_timeout";
+    message?: string;
+  };
+};
+
 function mustBase() {
   if (!BASE) throw new Error('백엔드 주소 미설정: .env(또는 Vercel env)의 VITE_BACKEND_BASE를 확인하세요.');
 }
@@ -77,6 +85,40 @@ function normalizeSuggestions(suggestions: unknown): string[] {
     .slice(0, 5); // 최대 5개로 제한
 }
 
+// 타임아웃 에러 감지 함수
+function isTimeoutError(data: any): data is TimeoutError {
+  return data?.detail?.error === "bedrock_timeout";
+}
+
+// 지수 백오프 재시도 함수
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 1,
+  baseDelay: number = 800
+): Promise<T> {
+  let lastError: Error;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error as Error;
+      
+      if (attempt === maxRetries) {
+        break;
+      }
+      
+      // 지수 백오프: 800ms, 1200ms
+      const delay = baseDelay * Math.pow(1.52, attempt);
+      console.log(`[API] Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms delay`);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError!;
+}
+
 export async function health() {
   mustBase();
   const r = await fetch(`${BASE}/health`, { 
@@ -101,23 +143,26 @@ function isSuggestionsResp(x: any): x is SuggestionsResp {
 export async function chat(body: ChatBody): Promise<ChatResp> {
   mustBase();
   
+  const clientRequestId = makeTraceId();
+  
   try {
-    console.log('[chat] Request payload:', body);
-    console.log('[chat] API Gateway URL:', `${BASE}/chat`);
+    console.log(`[chat:${clientRequestId}] Request payload:`, body);
+    console.log(`[chat:${clientRequestId}] API Gateway URL:`, `${BASE}/chat`);
     
     const r = await fetch(`${BASE}/chat`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json', 
-        'Accept': 'application/json' 
+        'Accept': 'application/json',
+        'x-client-request-id': clientRequestId
       },
       body: JSON.stringify({
         userQuestion: body.userQuestion,
         major: body.major,
         subField: body.subField,
         conversationId: body.conversationId,
-        followupMode: body.followupMode || "multi",
-        suggestCount: body.suggestCount || 3
+        followupMode: body.followupMode || "never", // 기본값을 never로 변경
+        suggestCount: body.suggestCount || 0        // 기본값을 0으로 변경
       }),
       credentials: 'omit',
     });
@@ -132,12 +177,25 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
         data = JSON.parse(raw); 
       }
     } catch (e) {
-      console.warn('[chat] JSON parse failed:', e);
+      console.warn(`[chat:${clientRequestId}] JSON parse failed:`, e);
+    }
+
+    // 타임아웃 에러 특별 처리
+    if (r.status === 504) {
+      console.error(`[chat:${clientRequestId}] 504 Gateway Timeout - Request payload:`, body);
+      console.error(`[chat:${clientRequestId}] Response:`, raw);
+      
+      if (data && isTimeoutError(data)) {
+        throw new ApiError('지금 답변 생성이 지연되고 있어요. 잠시 후 다시 시도해 주세요.', 504, data);
+      } else {
+        throw new ApiError('서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.', 504, { raw });
+      }
     }
 
     if (!r.ok) {
-      console.error('[chat] http', r.status, ct, raw);
-      throw new Error(`HTTP ${r.status}: ${raw || 'Internal Server Error'}`);
+      console.error(`[chat:${clientRequestId}] HTTP ${r.status} - Request payload:`, body);
+      console.error(`[chat:${clientRequestId}] Response:`, raw);
+      throw new ApiError(`HTTP ${r.status}: ${raw || 'Internal Server Error'}`, r.status, { raw, payload: body });
     }
 
     // 응답 검증
@@ -146,7 +204,7 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
     }
 
     if (!isChatResp(data)) {
-      console.warn('[chat] invalid response shape:', data);
+      console.warn(`[chat:${clientRequestId}] invalid response shape:`, data);
       return {
         aiResponse: '죄송합니다. 일시적인 오류가 발생했습니다.',
         conversationId: body.conversationId ?? 'unknown',
@@ -154,24 +212,12 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
       };
     }
 
-    console.log('[chat] Response:', data);
+    console.log(`[chat:${clientRequestId}] Response:`, data);
     
-    // suggestions 디버깅 로그 추가
-    const validatedData = data as ChatResp;
-    const suggestions = validatedData.suggestions || [];
-    if (suggestions.length === 0) {
-      console.warn('[chat] No suggestions received. Request params were:');
-      console.warn('- followupMode:', body.followupMode || "multi");
-      console.warn('- suggestCount:', body.suggestCount || 3);
-      console.warn('- Backend might not be generating suggestions properly');
-    } else {
-      console.log('[chat] Suggestions received:', suggestions.length, 'items');
-    }
-    
-    return validatedData;
+    return data as ChatResp;
 
   } catch (error) {
-    console.error('[chat] Request failed:', error);
+    console.error(`[chat:${clientRequestId}] Request failed:`, error);
     throw error;
   }
 }
@@ -179,15 +225,18 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
 export async function fetchSuggestions(body: SuggestionsBody): Promise<string[]> {
   mustBase();
   
+  const clientRequestId = makeTraceId();
+  
   try {
-    console.log('[suggestions] Request payload:', body);
-    console.log('[suggestions] API Gateway URL:', `${BASE}/suggestions`);
+    console.log(`[suggestions:${clientRequestId}] Request payload:`, body);
+    console.log(`[suggestions:${clientRequestId}] API Gateway URL:`, `${BASE}/suggestions`);
     
     const r = await fetch(`${BASE}/suggestions`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'x-client-request-id': clientRequestId
       },
       body: JSON.stringify(body),
       credentials: 'omit',
@@ -203,30 +252,31 @@ export async function fetchSuggestions(body: SuggestionsBody): Promise<string[]>
         data = JSON.parse(raw); 
       }
     } catch (e) {
-      console.warn('[suggestions] JSON parse failed:', e);
+      console.warn(`[suggestions:${clientRequestId}] JSON parse failed:`, e);
     }
 
     if (!r.ok) {
-      console.error('[suggestions] http', r.status, ct, raw);
+      console.error(`[suggestions:${clientRequestId}] HTTP ${r.status} - Request payload:`, body);
+      console.error(`[suggestions:${clientRequestId}] Response:`, raw);
       return []; // suggestions 실패 시 빈 배열 반환
     }
 
     // 응답 검증
     if (!data) {
-      console.warn('[suggestions] No data received');
+      console.warn(`[suggestions:${clientRequestId}] No data received`);
       return [];
     }
 
     if (!isSuggestionsResp(data)) {
-      console.warn('[suggestions] invalid response shape:', data);
+      console.warn(`[suggestions:${clientRequestId}] invalid response shape:`, data);
       return [];
     }
 
-    console.log('[suggestions] Response:', data);
+    console.log(`[suggestions:${clientRequestId}] Response:`, data);
     return normalizeSuggestions((data as SuggestionsResp).suggestions);
 
   } catch (error) {
-    console.error('[suggestions] Request failed:', error);
+    console.error(`[suggestions:${clientRequestId}] Request failed:`, error);
     return []; // 에러 시 빈 배열 반환
   }
 }
@@ -257,7 +307,7 @@ export const api = {
   faq: async (subField: string) => ({ faqs: [] }), // Placeholder
 };
 
-// 스트리밍 채팅 함수 (API Gateway 모드)
+// 스트리밍 채팅 함수 (API Gateway 모드) - 5초 타임아웃 가드 추가
 export function streamChat(params: {
   q: string; major: string; subField: string; conversationId: string;
   onStart?: (cid: string) => void;
@@ -292,11 +342,22 @@ export function streamChat(params: {
   let isClosed = false;
   let reconnectAttempts = 0;
   const maxReconnectAttempts = 2;
+  let hasReceivedDelta = false;
+  let deltaTimeoutId: NodeJS.Timeout;
   
   const createEventSource = () => {
     if (isClosed) return null;
     
     const eventSource = new EventSource(url.toString());
+    
+    // 5초 내 answer_delta 수신 없으면 폴백
+    deltaTimeoutId = setTimeout(() => {
+      if (!hasReceivedDelta && !isClosed) {
+        console.warn('[streamChat] No answer_delta received within 5s, falling back to non-streaming');
+        eventSource.close();
+        params.onError?.('스트리밍 응답이 지연되어 일반 모드로 전환합니다.');
+      }
+    }, 5000);
     
     eventSource.onmessage = (event) => {
       if (isClosed) return;
@@ -308,13 +369,17 @@ export function streamChat(params: {
             params.onStart?.(data.conversationId);
             break;
           case "answer_delta":
+            hasReceivedDelta = true;
+            clearTimeout(deltaTimeoutId);
             params.onDelta?.(data.text || "");
             break;
           case "done":
+            clearTimeout(deltaTimeoutId);
             eventSource.close();
             params.onDone?.();
             break;
           case "error":
+            clearTimeout(deltaTimeoutId);
             eventSource.close();
             params.onError?.(data.message || "스트리밍 오류");
             break;
@@ -344,6 +409,7 @@ export function streamChat(params: {
           }
         }, 1000 * reconnectAttempts); // 지수 백오프
       } else {
+        clearTimeout(deltaTimeoutId);
         eventSource.close();
         params.onError?.("연결이 원활하지 않습니다. 잠시 후 다시 시도해주세요.");
       }
@@ -356,6 +422,7 @@ export function streamChat(params: {
   
   const cleanup = () => {
     isClosed = true;
+    clearTimeout(deltaTimeoutId);
     if (eventSource) {
       eventSource.close();
     }

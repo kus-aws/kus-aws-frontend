@@ -3,11 +3,12 @@ import { useRoute, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Send, RotateCcw, AlertCircle, Lightbulb, Loader2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Send, RotateCcw, AlertCircle, Lightbulb, Loader2, RefreshCw, Save, MessageSquare } from "lucide-react";
 import { MessageFeedback } from "@/components/MessageFeedback";
 import { MessageSuggestionChips } from "@/components/MessageSuggestionChips";
 import { useChat } from "@/hooks/useChat";
 import { getMajorCategoryById, getSubCategoryById } from "@/data/categories";
+import { ApiError } from "@/lib/api";
 
 export default function Chat() {
   const [, params] = useRoute("/chat/:majorId/:subId");
@@ -38,7 +39,11 @@ export default function Chat() {
     messages, 
     loading, 
     error, 
-    send
+    send,
+    retryLastMessage,
+    saveOffline,
+    showSuggestionsOnly,
+    clearChat
   } = useChat({
     major: majorCategory?.name || '',
     subField: subCategory?.name || '',
@@ -72,20 +77,30 @@ export default function Chat() {
 
   // Handle clear chat
   const handleClearChat = () => {
-    // Reset conversation
-    window.location.reload();
+    clearChat();
   };
 
   // Handle retry last message
   const handleRetryLastMessage = () => {
-    const lastUserMessage = messages
-      .filter(m => m.role === 'user')
-      .pop();
-    
-    if (lastUserMessage) {
-      send(lastUserMessage.text);
-    }
+    retryLastMessage();
   };
+
+  // Handle save offline
+  const handleSaveOffline = () => {
+    saveOffline();
+  };
+
+  // Handle show suggestions only
+  const handleShowSuggestionsOnly = () => {
+    showSuggestionsOnly();
+  };
+
+  // Check if error is timeout error
+  const isTimeoutError = error && (
+    error.includes('지연되고 있어요') || 
+    error.includes('응답 시간이 초과') ||
+    error.includes('잠시 후 다시 시도')
+  );
 
   // Redirect if invalid route
   if (!majorCategory || !subCategory) {
@@ -125,19 +140,6 @@ export default function Chat() {
             </div>
 
             <div className="flex items-center space-x-2">
-              {error && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRetryLastMessage}
-                  className="flex items-center space-x-2"
-                  data-testid="button-retry"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  <span>재시도</span>
-                </Button>
-              )}
-              
               <Button
                 variant="outline"
                 onClick={handleClearChat}
@@ -265,12 +267,53 @@ export default function Chat() {
                 </div>
               )}
               
-              {/* Error display */}
+              {/* Error display with timeout-specific UX */}
               {error && (
                 <div className="flex justify-center">
-                  <div className="bg-red-50 text-red-700 px-4 py-2 rounded-lg flex items-center space-x-2">
-                    <AlertCircle className="w-4 h-4" />
-                    <span>{error}</span>
+                  <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg max-w-md">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <AlertCircle className="w-5 h-5" />
+                      <span className="font-medium">오류가 발생했습니다</span>
+                    </div>
+                    <p className="text-sm mb-3">{error}</p>
+                    
+                    {/* 타임아웃 에러 전용 액션 버튼들 */}
+                    {isTimeoutError && (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleRetryLastMessage}
+                          className="flex items-center space-x-2 text-red-700 border-red-300 hover:bg-red-50"
+                          data-testid="button-retry"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                          <span>다시 시도</span>
+                        </Button>
+                        
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleSaveOffline}
+                          className="flex items-center space-x-2 text-blue-700 border-blue-300 hover:bg-blue-50"
+                          data-testid="button-save-offline"
+                        >
+                          <Save className="w-4 h-4" />
+                          <span>오프라인 저장</span>
+                        </Button>
+                        
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleShowSuggestionsOnly}
+                          className="flex items-center space-x-2 text-green-700 border-green-300 hover:bg-green-50"
+                          data-testid="button-suggestions-only"
+                        >
+                          <MessageSquare className="w-4 h-4" />
+                          <span>제안만 보기</span>
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

@@ -9,6 +9,8 @@ export type SSEEvent =
 export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
+  suggestions?: string[];
+  messageId: string;
 }
 
 // API request/response types
@@ -21,4 +23,26 @@ export interface SuggestionsRequest {
 
 export interface SuggestionsResponse {
   suggestions: string[];
+}
+
+// Error types
+export interface TimeoutError {
+  detail: {
+    error: "bedrock_timeout";
+    message?: string;
+  };
+}
+
+export interface ApiErrorResponse {
+  status: number;
+  message: string;
+  details?: any;
+}
+
+// Offline storage types
+export interface OfflineQuestion {
+  question: string;
+  timestamp: string;
+  major: string;
+  subField: string;
 }
