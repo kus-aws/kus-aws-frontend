@@ -1,5 +1,5 @@
 // src/lib/api.ts
-export const BASE = (process.env.NEXT_PUBLIC_BACKEND_BASE || '').replace(/\/$/, '');
+export const BASE = (import.meta.env.NEXT_PUBLIC_BACKEND_BASE || '').replace(/\/$/, '');
 
 export class ApiError extends Error {
   constructor(
@@ -65,7 +65,7 @@ export async function fetchSuggestions(body: {
 
 // 유틸: 백엔드 사용 전 점검용
 export async function ensureBackend() {
-  console.log('[BASE from env]', process.env.NEXT_PUBLIC_BACKEND_BASE);
+  console.log('[BASE from env]', import.meta.env.NEXT_PUBLIC_BACKEND_BASE);
   console.log('[BASE after norm]', BASE);
   if (!BASE) throw new Error('백엔드 주소 미설정: .env(또는 Vercel env)의 NEXT_PUBLIC_BACKEND_BASE를 확인하세요.');
   try {
