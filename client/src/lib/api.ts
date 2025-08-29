@@ -40,6 +40,18 @@ export async function chat(body: {
     body: JSON.stringify(body),
     credentials: 'omit',
   });
+  
+  if (!r.ok) {
+    console.error(`[chat] HTTP ${r.status} ${r.statusText}`);
+    const errorText = await r.text().catch(() => 'No error text');
+    console.error('[chat] Error response:', errorText);
+    return { 
+      aiResponse: `죄송합니다. 서버 오류가 발생했습니다 (${r.status}). 잠시 후 다시 시도해주세요.`, 
+      conversationId: body.conversationId ?? 'unknown', 
+      suggestions: [] 
+    };
+  }
+  
   const j = await r.json().catch(() => null);
   if (!isChatResp(j)) {
     console.warn('[chat] invalid shape:', j);
