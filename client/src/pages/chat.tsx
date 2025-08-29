@@ -204,9 +204,44 @@ export default function Chat() {
       setStreamCleanup(null);
     }
 
-    // Start SSE streaming
+    // SSE streaming disabled - use REST API instead
+    try {
+      const response = await apiService.sendChatMessage({
+        message: message,
+        majorCategory: params.majorId,
+        subCategory: params.subId,
+        sessionId: chatState.sessionId,
+        suggestCount: 3,
+        followupMode: "multi"
+      });
+
+      const aiMessage: EnhancedMessage = {
+        id: response.id,
+        content: response.content,
+        sender: "ai",
+        timestamp: new Date(response.timestamp),
+        processingTime: response.processingTime,
+        suggestions: response.suggestions,
+      };
+      
+      setChatState(prev => ({
+        ...prev,
+        messages: [...prev.messages, aiMessage],
+        lastAIMessageId: aiMessage.id,
+      }));
+      
+    } catch (error) {
+      console.error('Chat error:', error);
+      toast({
+        title: "메시지 전송 실패", 
+        description: "잠시 후 다시 시도해주세요.",
+        variant: "destructive",
+      });
+    }
+    
+    /* OLD SSE CODE:
     const cleanup = connectStream({
-      baseUrl: import.meta.env.VITE_API_BASE_URL || "",
+      baseUrl: BASE,
       q: message,
       major: params.majorId,
       subField: params.subId,
@@ -264,9 +299,9 @@ export default function Chat() {
           variant: "destructive",
         });
       },
-    });
-    
+    }); 
     setStreamCleanup(() => cleanup);
+    */
   };
 
   const handleTypingComplete = () => {
