@@ -36,6 +36,17 @@ export type ChatResp = {
   suggestions?: string[] | null;
 };
 
+export type SuggestionsBody = {
+  conversationId: string;
+  major: string;
+  subField: string;
+  suggestCount: number;
+};
+
+export type SuggestionsResp = {
+  suggestions: string[];
+};
+
 function mustBase() {
   if (!BASE) throw new Error('백엔드 주소 미설정: .env(또는 Vercel env)의 VITE_BACKEND_BASE를 확인하세요.');
 }
@@ -46,32 +57,6 @@ function makeTraceId() {
     return crypto.randomUUID(); 
   } catch { 
     return `trace-${Date.now()}`; 
-  }
-}
-
-// Enhanced fetch with timeout and error handling
-async function fetchJSON(url: string, init: RequestInit, timeoutMs = 30000) {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-  
-  try {
-    const res = await fetch(url, { 
-      ...init, 
-      signal: controller.signal,
-      headers: {
-        ...init.headers,
-        'x-trace-id': makeTraceId(),
-      }
-    });
-    
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status} ${text || "Internal Server Error"}`);
-    }
-    
-    return res.json();
-  } finally {
-    clearTimeout(id);
   }
 }
 
@@ -123,6 +108,11 @@ function isChatResp(x: any): x is ChatResp {
   return x && typeof x.aiResponse === 'string' && typeof x.conversationId === 'string';
 }
 
+function isSuggestionsResp(x: any): x is SuggestionsResp {
+  return x && Array.isArray(x.suggestions);
+}
+
+// ✅ 수정: chat 함수를 빠른 응답 전용으로 변경
 export async function chat(body: ChatBody): Promise<ChatResp> {
   // Input validation
   if (!body.userQuestion?.trim()) {
@@ -136,7 +126,7 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
   }
 
   if (USE_LAMBDA_DIRECT) {
-    // Direct Lambda call - /chat endpoint
+    // Direct Lambda call - /chat endpoint (빠른 응답 전용)
     try {
       console.log('[chat] Lambda direct call to:', `${LAMBDA_URL}/chat`);
       console.log('[chat] Request payload:', body);
@@ -148,7 +138,11 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
           'Accept': 'application/json',
           'x-trace-id': makeTraceId(),
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ...body,
+          followupMode: "never", // 항상 빠른 응답
+          suggestCount: 0,       // suggestions 없음
+        }),
         credentials: 'omit',
       });
 
@@ -158,6 +152,12 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
       
       if (!r.ok) {
         throw new Error(`HTTP ${r.status} ${text || "Internal Server Error"}`);
+      }
+
+      // Content-Type 확인
+      const contentType = r.headers.get('content-type');
+      if (!contentType?.includes('application/json')) {
+        console.warn('[chat] Unexpected content-type:', contentType);
       }
 
       // Safe JSON parsing
@@ -177,8 +177,8 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
         };
       }
       
-      // Normalize suggestions
-      response.suggestions = normalizeSuggestions(response.suggestions);
+      // chat 응답에는 suggestions가 없어야 함 (빠른 응답)
+      response.suggestions = [];
       return response;
       
     } catch (error) {
@@ -194,7 +194,11 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
     const r = await fetch(`${BASE}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        ...body,
+        followupMode: "never", // 항상 빠른 응답
+        suggestCount: 0,       // suggestions 없음
+      }),
       credentials: 'omit',
     });
     
@@ -242,19 +246,14 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
       };
     }
     
-    // Normalize suggestions
-    j.suggestions = normalizeSuggestions(j.suggestions);
+    // chat 응답에는 suggestions가 없어야 함 (빠른 응답)
+    j.suggestions = [];
     return j;
   }
 }
 
-// ✅ 새로 추가: 서버의 /suggestions 호출
-export async function fetchSuggestions(body: {
-  conversationId: string;
-  major: string;
-  subField: string;
-  suggestCount: number; // 1~5
-}): Promise<string[]> {
+// ✅ 수정: fetchSuggestions 함수를 별도로 호출
+export async function fetchSuggestions(body: SuggestionsBody): Promise<string[]> {
   if (USE_LAMBDA_DIRECT) {
     // Direct Lambda call - /suggestions endpoint
     try {
@@ -277,8 +276,19 @@ export async function fetchSuggestions(body: {
         return [];
       }
 
+      // Content-Type 확인
+      const contentType = r.headers.get('content-type');
+      if (!contentType?.includes('application/json')) {
+        console.warn('[suggestions] Unexpected content-type:', contentType);
+      }
+
       const response = safeJsonParse(text);
-      return normalizeSuggestions(response?.suggestions);
+      if (!isSuggestionsResp(response)) {
+        console.warn('[suggestions] invalid response shape:', response);
+        return [];
+      }
+      
+      return normalizeSuggestions(response.suggestions);
       
     } catch (error) {
       console.error('[suggestions] Lambda direct call failed:', error);
@@ -293,8 +303,19 @@ export async function fetchSuggestions(body: {
       body: JSON.stringify(body),
       credentials: 'omit',
     });
+    
+    if (!r.ok) {
+      console.warn('[suggestions] Backend call failed:', r.status);
+      return [];
+    }
+    
     const j = await r.json().catch(() => ({ suggestions: [] }));
-    return normalizeSuggestions(j?.suggestions);
+    if (!isSuggestionsResp(j)) {
+      console.warn('[suggestions] invalid response shape:', j);
+      return [];
+    }
+    
+    return normalizeSuggestions(j.suggestions);
   }
 }
 
