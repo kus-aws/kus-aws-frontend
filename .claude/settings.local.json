@@ -14,7 +14,11 @@
       "Bash(vercel env:*)",
       "Bash(vercel:*)",
       "Bash(npx vite:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(for i in {1..5})",
+      "Bash(do)",
+      "Bash(echo:*)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []
