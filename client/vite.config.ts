@@ -4,7 +4,6 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
-  envDir: '../', // Look for .env files in parent directory (project root)
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -13,5 +12,9 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+  },
+  // Define environment variables explicitly for Vercel deployment
+  define: {
+    'import.meta.env.NEXT_PUBLIC_BACKEND_BASE': JSON.stringify(process.env.NEXT_PUBLIC_BACKEND_BASE),
   },
 })
