@@ -1,4 +1,9 @@
 // src/lib/api.ts
+
+// Lambda Direct Call Configuration (Temporary Hotfix)
+const LAMBDA_URL = 'https://2kdtuncj36tas5twwm7dsgpz5y0bkfkw.lambda-url.us-east-1.on.aws';
+const USE_LAMBDA_DIRECT = true; // Toggle flag for easy rollback
+
 export const BASE = (
   import.meta.env.VITE_BACKEND_BASE || 
   import.meta.env.NEXT_PUBLIC_BACKEND_BASE || ''
@@ -16,14 +21,68 @@ export class ApiError extends Error {
 }
 
 function mustBase() {
-  if (!BASE) throw new Error('백엔드 주소 미설정: .env(또는 Vercel env)의 NEXT_PUBLIC_BACKEND_BASE를 확인하세요.');
+  if (!BASE) throw new Error('백엔드 주소 미설정: .env(또는 Vercel env)의 VITE_BACKEND_BASE를 확인하세요.');
+}
+
+// Utility function to generate trace ID
+function makeTraceId() {
+  try { 
+    return crypto.randomUUID(); 
+  } catch { 
+    return `trace-${Date.now()}`; 
+  }
+}
+
+// Enhanced fetch with timeout and error handling
+async function fetchJSON(url: string, init: RequestInit, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const res = await fetch(url, { 
+      ...init, 
+      signal: controller.signal,
+      headers: {
+        ...init.headers,
+        'x-trace-id': makeTraceId(),
+      }
+    });
+    
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status} ${res.statusText} :: ${text}`);
+    }
+    
+    return res.json();
+  } finally {
+    clearTimeout(id);
+  }
 }
 
 export async function health() {
-  mustBase();
-  const r = await fetch(`${BASE}/health`, { credentials: 'omit' });
-  // 백엔드가 "ok" (문자열) 반환 → JSON 아닐 수 있으니 방어
-  try { return await r.json(); } catch { return 'ok'; }
+  if (USE_LAMBDA_DIRECT) {
+    // Direct Lambda call
+    const r = await fetch(`${LAMBDA_URL}/health`, { 
+      credentials: 'omit',
+      headers: {
+        'x-trace-id': makeTraceId(),
+      }
+    });
+    try { 
+      return await r.json(); 
+    } catch { 
+      return 'ok'; 
+    }
+  } else {
+    // Original backend call
+    mustBase();
+    const r = await fetch(`${BASE}/health`, { credentials: 'omit' });
+    try { 
+      return await r.json(); 
+    } catch { 
+      return 'ok'; 
+    }
+  }
 }
 
 type ChatResp = { aiResponse: string; conversationId: string; suggestions?: string[] | null };
@@ -36,9 +95,7 @@ export async function chat(body: {
   userQuestion: string; major: string; subField: string;
   conversationId?: string; followupMode?: 'never' | 'single' | 'multi'; suggestCount?: number;
 }): Promise<ChatResp> {
-  mustBase();
-  
-  // 입력 검증
+  // Input validation
   if (!body.userQuestion?.trim()) {
     throw new ApiError('질문을 입력해주세요.');
   }
@@ -48,67 +105,139 @@ export async function chat(body: {
   if (!body.major?.trim() || !body.subField?.trim()) {
     throw new ApiError('전공과 세부 분야를 선택해주세요.');
   }
-  const r = await fetch(`${BASE}/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    credentials: 'omit',
-  });
-  
-  if (!r.ok) {
-    console.error(`[chat] HTTP ${r.status} ${r.statusText}`);
-    const errorText = await r.text().catch(() => 'No error text');
-    console.error('[chat] Error response:', errorText);
+
+  if (USE_LAMBDA_DIRECT) {
+    // Direct Lambda call - /chat endpoint
+    try {
+      const response = await fetchJSON(`${LAMBDA_URL}/chat`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      
+      if (!isChatResp(response)) {
+        console.warn('[chat] invalid response shape:', response);
+        return { 
+          aiResponse: '죄송합니다. 일시적인 오류가 발생했습니다.', 
+          conversationId: body.conversationId ?? 'unknown', 
+          suggestions: [] 
+        };
+      }
+      
+      if (!Array.isArray(response.suggestions)) response.suggestions = [];
+      return response;
+      
+    } catch (error) {
+      console.error('[chat] Lambda direct call failed:', error);
+      throw new ApiError('Lambda 서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    }
+  } else {
+    // Original backend call - /api/chat endpoint
+    mustBase();
+    const r = await fetch(`${BASE}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      credentials: 'omit',
+    });
     
-    // 더 구체적인 오류 메시지 제공
-    let errorMessage = '서버 오류가 발생했습니다.';
-    if (r.status === 429) {
-      errorMessage = '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.';
-    } else if (r.status === 500) {
-      errorMessage = '서버에 일시적인 문제가 있습니다. 잠시 후 다시 시도해주세요.';
-    } else if (r.status === 503) {
-      errorMessage = '서비스가 일시적으로 사용불가합니다. 잠시 후 다시 시도해주세요.';
-    } else if (r.status === 400) {
-      errorMessage = '잘못된 요청입니다. 입력 내용을 확인해주세요.';
-    } else if (r.status >= 500) {
-      errorMessage = '서버 내부 오류가 발생했습니다.';
+    if (!r.ok) {
+      console.error(`[chat] HTTP ${r.status} ${r.statusText}`);
+      const errorText = await r.text().catch(() => 'No error text');
+      console.error('[chat] Error response:', errorText);
+      
+      // Enhanced error messages
+      let errorMessage = '서버 오류가 발생했습니다.';
+      if (r.status === 429) {
+        errorMessage = '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.';
+      } else if (r.status === 502) {
+        errorMessage = '백엔드 서버에 일시적인 문제가 있습니다. 잠시 후 다시 시도해주세요.';
+        console.error('[chat] 502 Bad Gateway - 백엔드 서버 문제 발생');
+        console.error('[chat] 백엔드 개발자에게 다음 정보를 전달하세요:');
+        console.error('[chat] - 오류: 502 Bad Gateway');
+        console.error('[chat] - 엔드포인트: /chat');
+        console.error('[chat] - 응답:', errorText);
+        console.error('[chat] - 시간:', new Date().toISOString());
+      } else if (r.status === 500) {
+        errorMessage = '서버에 일시적인 문제가 있습니다. 잠시 후 다시 시도해주세요.';
+      } else if (r.status === 503) {
+        errorMessage = '서비스가 일시적으로 사용불가합니다. 잠시 후 다시 시도해주세요.';
+      } else if (r.status === 400) {
+        errorMessage = '잘못된 요청입니다. 입력 내용을 확인해주세요.';
+      } else if (r.status >= 500) {
+        errorMessage = '서버 내부 오류가 발생했습니다.';
+      }
+      
+      return { 
+        aiResponse: `죄송합니다. ${errorMessage} (${r.status})`, 
+        conversationId: body.conversationId ?? 'unknown', 
+        suggestions: []
+      };
     }
     
-    return { 
-      aiResponse: `죄송합니다. ${errorMessage} (${r.status})`, 
-      conversationId: body.conversationId ?? 'unknown', 
-      suggestions: []
-    };
+    const j = await r.json().catch(() => null);
+    if (!isChatResp(j)) {
+      console.warn('[chat] invalid shape:', j);
+      return { 
+        aiResponse: '죄송합니다. 일시적인 오류가 발생했습니다.', 
+        conversationId: body.conversationId ?? 'unknown', 
+        suggestions: [] 
+      };
+    }
+    if (!Array.isArray(j.suggestions)) j.suggestions = [];
+    return j;
   }
-  
-  const j = await r.json().catch(() => null);
-  if (!isChatResp(j)) {
-    console.warn('[chat] invalid shape:', j);
-    return { aiResponse: '죄송합니다. 일시적인 오류가 발생했습니다.', conversationId: body.conversationId ?? 'unknown', suggestions: [] };
-  }
-  if (!Array.isArray(j.suggestions)) j.suggestions = [];
-  return j;
 }
 
 export async function fetchSuggestions(body: {
   conversationId: string; major: string; subField: string; suggestCount: number;
 }): Promise<string[]> {
-  mustBase();
-  const r = await fetch(`${BASE}/suggestions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    credentials: 'omit',
-  });
-  const j = await r.json().catch(() => ({ suggestions: [] }));
-  return Array.isArray(j?.suggestions) ? j.suggestions : [];
+  if (USE_LAMBDA_DIRECT) {
+    // Direct Lambda call - /suggestions endpoint
+    try {
+      const response = await fetchJSON(`${LAMBDA_URL}/suggestions`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+      
+      return Array.isArray(response?.suggestions) ? response.suggestions : [];
+    } catch (error) {
+      console.error('[suggestions] Lambda direct call failed:', error);
+      return [];
+    }
+  } else {
+    // Original backend call
+    mustBase();
+    const r = await fetch(`${BASE}/suggestions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      credentials: 'omit',
+    });
+    const j = await r.json().catch(() => ({ suggestions: [] }));
+    return Array.isArray(j?.suggestions) ? j.suggestions : [];
+  }
 }
 
 // 유틸: 백엔드 사용 전 점검용
 export async function ensureBackend() {
-  console.log('[BASE from env]', import.meta.env.VITE_BACKEND_BASE || import.meta.env.NEXT_PUBLIC_BACKEND_BASE);
-  console.log('[BASE after norm]', BASE);
-  if (!BASE) throw new Error('백엔드 주소 미설정: .env(또는 Vercel env)의 VITE_BACKEND_BASE를 확인하세요.');
+  console.log('[Lambda Direct Mode]', USE_LAMBDA_DIRECT);
+  if (USE_LAMBDA_DIRECT) {
+    console.log('[LAMBDA_URL]', LAMBDA_URL);
+  } else {
+    console.log('[BASE from env]', import.meta.env.VITE_BACKEND_BASE || import.meta.env.NEXT_PUBLIC_BACKEND_BASE);
+    console.log('[BASE after norm]', BASE);
+  }
+  
+  if (!USE_LAMBDA_DIRECT && !BASE) {
+    throw new Error('백엔드 주소 미설정: .env(또는 Vercel env)의 VITE_BACKEND_BASE를 확인하세요.');
+  }
+  
   try {
     const h = await health();
     console.log('[health ok]', h);
@@ -124,7 +253,7 @@ export const api = {
   faq: async (subField: string) => ({ faqs: [] }), // Placeholder
 };
 
-// 스트리밍 채팅 함수 추가
+// 스트리밍 채팅 함수 - 임시로 비활성화 (Lambda 직접 호출 모드에서는 사용하지 않음)
 export function streamChat(params: {
   q: string; major: string; subField: string; conversationId: string;
   onStart?: (cid: string) => void;
@@ -132,6 +261,13 @@ export function streamChat(params: {
   onDone?: () => void;
   onError?: (msg: string) => void;
 }) {
+  if (USE_LAMBDA_DIRECT) {
+    // Lambda 직접 호출 모드에서는 스트리밍을 지원하지 않음
+    params.onError?.('현재 스트리밍 기능이 일시적으로 비활성화되었습니다. 일반 채팅을 사용해주세요.');
+    return () => {};
+  }
+  
+  // Original streaming logic (when not using Lambda direct)
   mustBase();
   
   // 입력 검증

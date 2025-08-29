@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-import { streamChat, fetchSuggestions } from '@/lib/api';
+import { chat } from '@/lib/api';
 import { usePerformance } from './usePerformance';
 
 type Msg = { role: 'user' | 'assistant'; text: string };
@@ -17,21 +17,9 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
     return cid;
   });
   const controllerRef = useRef<AbortController | null>(null);
-  const streamCleanupRef = useRef<(() => void) | null>(null);
   
   // 성능 모니터링 훅 사용
-  const { startStreaming, recordChunk, endStreaming } = usePerformance();
-
-  // 메시지 업데이트 최적화를 위한 함수
-  const updateMessage = useCallback((index: number, text: string) => {
-    setMessages(prev => {
-      const newMessages = [...prev];
-      if (newMessages[index]) {
-        newMessages[index] = { ...newMessages[index], text };
-      }
-      return newMessages;
-    });
-  }, []);
+  const { startStreaming, endStreaming } = usePerformance();
 
   async function send(q: string) {
     if (!q.trim()) return;
@@ -54,67 +42,48 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
     // 성능 모니터링 시작
     startStreaming();
 
-    // 이전 스트리밍 정리
-    if (streamCleanupRef.current) {
-      streamCleanupRef.current();
-      streamCleanupRef.current = null;
-    }
-
     const ac = new AbortController(); 
     controllerRef.current = ac;
 
     try {
-      const cleanup = streamChat({
-        q, 
-        major: init.major, 
-        subField: init.subField, 
+      // Lambda 직접 호출 모드에서는 일반 채팅 사용
+      const response = await chat({
+        userQuestion: q,
+        major: init.major,
+        subField: init.subField,
         conversationId,
-        onStart: (cid) => {
-          if (cid && cid !== conversationId) {
-            setCid(cid);
-            localStorage.setItem('cid', cid);
-          }
-        },
-        onDelta: (chunk) => {
-          // 성능 메트릭 기록
-          recordChunk(chunk);
-          updateMessage(assistantIndex, (messages[assistantIndex]?.text || '') + chunk);
-        },
-        onDone: async () => {
-          setLoading(false);
-          // 성능 모니터링 종료
-          endStreaming();
-          
-          try {
-            const sugs = await fetchSuggestions({
-              conversationId, 
-              major: init.major, 
-              subField: init.subField, 
-              suggestCount: init.suggestCount ?? 3,
-            });
-            setSuggestions(sugs);
-          } catch (err) {
-            console.warn('추천 질문 로딩 실패:', err);
-            // 추천 질문 실패는 치명적이지 않음
-          }
-        },
-        onError: (msg) => { 
-          setLoading(false);
-          setError(msg || '스트리밍 중 오류가 발생했습니다.');
-          // 에러 발생 시 빈 어시스턴트 메시지 제거
-          setMessages(prev => prev.filter((_, i) => i !== assistantIndex));
-          // 성능 모니터링 종료
-          endStreaming();
-        },
+        followupMode: init.suggestCount ? 'multi' : 'never',
+        suggestCount: init.suggestCount ?? 3,
       });
-      
-      streamCleanupRef.current = cleanup;
+
+      // 응답 처리
+      setMessages(prev => {
+        const newMessages = [...prev];
+        if (newMessages[assistantIndex]) {
+          newMessages[assistantIndex] = { role: 'assistant', text: response.aiResponse };
+        }
+        return newMessages;
+      });
+
+      // conversationId 업데이트
+      if (response.conversationId && response.conversationId !== conversationId) {
+        setCid(response.conversationId);
+        localStorage.setItem('cid', response.conversationId);
+      }
+
+      // 추천 질문 설정
+      if (response.suggestions && response.suggestions.length > 0) {
+        setSuggestions(response.suggestions);
+      }
+
+      setLoading(false);
+      endStreaming();
+
     } catch (err) {
       setLoading(false);
-      setError('스트리밍을 시작할 수 없습니다.');
+      setError(err instanceof Error ? err.message : '채팅 중 오류가 발생했습니다.');
       // 에러 발생 시 빈 어시스턴트 메시지 제거
       setMessages(prev => prev.filter((_, i) => i !== assistantIndex));
-      // 성능 모니터링 종료
       endStreaming();
     }
   }
@@ -124,12 +93,7 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
       controllerRef.current.abort();
       controllerRef.current = null;
     }
-    if (streamCleanupRef.current) {
-      streamCleanupRef.current();
-      streamCleanupRef.current = null;
-    }
     setLoading(false);
-    // 성능 모니터링 종료
     endStreaming();
   }, [endStreaming]);
 
@@ -139,10 +103,6 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
       if (controllerRef.current) {
         controllerRef.current.abort();
       }
-      if (streamCleanupRef.current) {
-        streamCleanupRef.current();
-      }
-      // 성능 모니터링 종료
       endStreaming();
     };
   }, [endStreaming]);

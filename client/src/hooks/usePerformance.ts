@@ -57,7 +57,7 @@ export function usePerformance() {
     }
 
     // 성능 메트릭 로깅 (개발 환경에서만)
-    if (import.meta.env.DEV) {
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
       console.log('📊 스트리밍 성능 메트릭:', {
         총_응답시간: `${(metricsRef.current.streamingDuration / 1000).toFixed(2)}초`,
         총_문자수: metricsRef.current.totalChars,
