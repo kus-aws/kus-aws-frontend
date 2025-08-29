@@ -67,8 +67,8 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
         major: init.major,
         subField: init.subField,
         conversationId, // 연속 대화 유지
-        followupMode: "never", // 빠른 응답
-        suggestCount: 0,       // suggestions 없음
+        followupMode: "multi", // suggestions 포함
+        suggestCount: init.suggestCount || 3, // suggestions 개수
       });
 
       // 응답 처리
