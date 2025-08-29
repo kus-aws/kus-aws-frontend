@@ -434,10 +434,7 @@ export default function Chat() {
             </div>
           </div>
           
-          {/* Connection Status */}
-          <div className="mt-4">
-            <ConnectionStatus />
-          </div>
+          {/* Connection Status - Removed, using ensureBackend() instead */}
         </div>
 
         {/* Sample Questions */}
