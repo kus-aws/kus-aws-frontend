@@ -1,47 +1,27 @@
-import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "./components/ui/toaster";
-import { TooltipProvider } from "./components/ui/tooltip";
 import { lazy, Suspense } from "react";
+import { Route, Switch } from "wouter";
+import { Toaster } from "@/components/ui/toaster";
+import { useToast } from "@/hooks/use-toast";
 
-// Lazy load pages for code splitting
+// Lazy load pages
 const Home = lazy(() => import("./pages/home"));
-const Categories = lazy(() => import("./pages/categories"));
 const Chat = lazy(() => import("./pages/chat"));
 const NotFound = lazy(() => import("./pages/not-found"));
-const Health = lazy(() => import("./pages/health"));
-
-function Router() {
-  return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/categories" component={Categories} />
-      <Route path="/categories/:majorId" component={Categories} />
-      <Route path="/chat/:majorId/:subId" component={Chat} />
-      <Route path="/health" component={Health} />
-      <Route component={NotFound} />
-    </Switch>
-  );
-}
 
 function App() {
+  const { toast } = useToast();
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Suspense fallback={
-          <div className="min-h-screen flex items-center justify-center">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-gray-600">로딩 중...</p>
-            </div>
-          </div>
-        }>
-          <Router />
-        </Suspense>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <>
+      <Suspense fallback={<div>Loading...</div>}>
+        <Switch>
+          <Route path="/" component={Home} />
+          <Route path="/chat/:majorId/:subId" component={Chat} />
+          <Route component={NotFound} />
+        </Switch>
+      </Suspense>
+      <Toaster />
+    </>
   );
 }
 
