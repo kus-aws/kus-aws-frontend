@@ -38,7 +38,6 @@ export default function Chat() {
     messages, 
     loading, 
     error, 
-    suggestions, 
     send
   } = useChat({
     major: majorCategory?.name || '',
@@ -200,7 +199,7 @@ export default function Chat() {
             <div className="h-96 overflow-y-auto p-4 space-y-4" data-testid="chat-messages">
               {messages.map((message, index) => (
                 <div
-                  key={index}
+                  key={message.messageId}
                   className={`flex ${
                     message.role === "user" 
                       ? "justify-end" 
@@ -217,11 +216,21 @@ export default function Chat() {
                   >
                     <p className="whitespace-pre-wrap">{message.text}</p>
                     
+                    {/* AI 메시지에 연계 질문 칩 표시 */}
+                    {message.role === "assistant" && message.suggestions && message.suggestions.length > 0 && (
+                      <SuggestionChips 
+                        items={message.suggestions} 
+                        onSelect={handleSuggestionClick} 
+                        disabled={loading}
+                        className="mt-3"
+                      />
+                    )}
+                    
                     {/* Actions for AI messages */}
                     {message.role === "assistant" && (
                       <div className="mt-2">
                         <MessageFeedback 
-                          messageId={`msg-${index}`}
+                          messageId={message.messageId}
                           onFeedback={(type, msgId) => {
                             console.log('Feedback:', type, msgId);
                           }}
@@ -256,13 +265,6 @@ export default function Chat() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Suggestion Chips */}
-        <SuggestionChips 
-          items={suggestions} 
-          onSelect={handleSuggestionClick} 
-          disabled={loading}
-        />
 
         {/* Message Input */}
         <Card className="bg-white">
