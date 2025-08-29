@@ -2,13 +2,17 @@ import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { chat, fetchSuggestions, ChatResp } from '@/lib/api';
 import { usePerformance } from './usePerformance';
 
-type Msg = { role: 'user' | 'assistant'; text: string };
+type Msg = { 
+  role: 'user' | 'assistant'; 
+  text: string; 
+  suggestions?: string[];
+  messageId: string;
+};
 
 export function useChat(init: { major: string; subField: string; suggestCount?: number; conversationId?: string }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [conversationId, setCid] = useState(() => {
     if (typeof window === 'undefined') return init.conversationId ?? 'cid-server';
     const saved = localStorage.getItem('cid');
@@ -34,16 +38,26 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
     
     sendingRef.current = true;
     setLoading(true);
-    setSuggestions([]);
     
     // 사용자 메시지 추가
-    setMessages(prev => [...prev, { role: 'user', text: q }]);
+    const userMessageId = crypto.randomUUID();
+    setMessages(prev => [...prev, { 
+      role: 'user', 
+      text: q, 
+      messageId: userMessageId 
+    }]);
     
     // 어시스턴트 메시지 초기화 및 인덱스 계산
     let assistantIndex: number;
+    const assistantMessageId = crypto.randomUUID();
     setMessages(prev => {
       assistantIndex = prev.length;
-      return [...prev, { role: 'assistant', text: '' }];
+      return [...prev, { 
+        role: 'assistant', 
+        text: '', 
+        suggestions: [],
+        messageId: assistantMessageId 
+      }];
     });
 
     try {
@@ -61,7 +75,10 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
       setMessages(prev => {
         const newMessages = [...prev];
         if (newMessages[assistantIndex]) {
-          newMessages[assistantIndex] = { role: 'assistant', text: response.aiResponse };
+          newMessages[assistantIndex] = { 
+            ...newMessages[assistantIndex],
+            text: response.aiResponse 
+          };
         }
         return newMessages;
       });
@@ -82,7 +99,12 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
           suggestCount: init.suggestCount ?? 3,
         }).then(fallbackSuggestions => {
           if (fallbackSuggestions.length > 0) {
-            setSuggestions(fallbackSuggestions);
+            // 해당 메시지에 suggestions 추가
+            setMessages(prev => prev.map(msg => 
+              msg.messageId === assistantMessageId 
+                ? { ...msg, suggestions: fallbackSuggestions }
+                : msg
+            ));
           }
         }).catch(error => {
           console.warn('[useChat] fetchSuggestions failed:', error);
@@ -97,7 +119,7 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
       setLoading(false);
       setError(err instanceof Error ? err.message : '채팅 중 오류가 발생했습니다.');
       // 에러 발생 시 빈 어시스턴트 메시지 제거
-      setMessages(prev => prev.filter((_, i) => i !== assistantIndex));
+      setMessages(prev => prev.filter(msg => msg.messageId !== assistantMessageId));
       endStreaming();
     } finally {
       sendingRef.current = false;
@@ -123,11 +145,10 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
     messages, 
     loading, 
     error, 
-    suggestions, 
     conversationId, 
     send, 
     cancel
-  }), [messages, loading, error, suggestions, conversationId, send, cancel]);
+  }), [messages, loading, error, conversationId, send, cancel]);
 
   return result;
 }
