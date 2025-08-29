@@ -109,13 +109,18 @@ export async function chat(body: {
   if (USE_LAMBDA_DIRECT) {
     // Direct Lambda call - /chat endpoint
     try {
+      console.log('[chat] Lambda direct call to:', `${LAMBDA_URL}/chat`);
+      console.log('[chat] Request payload:', body);
+      
       const response = await fetchJSON(`${LAMBDA_URL}/chat`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(body),
-      });
+      }, 60000); // 60초 타임아웃
+      
+      console.log('[chat] Lambda response:', response);
       
       if (!isChatResp(response)) {
         console.warn('[chat] invalid response shape:', response);
@@ -131,6 +136,9 @@ export async function chat(body: {
       
     } catch (error) {
       console.error('[chat] Lambda direct call failed:', error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new ApiError('요청 시간이 초과되었습니다. 다시 시도해주세요.');
+      }
       throw new ApiError('Lambda 서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.');
     }
   } else {

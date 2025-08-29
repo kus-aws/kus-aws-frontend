@@ -16,7 +16,6 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
     if (!saved) localStorage.setItem('cid', cid);
     return cid;
   });
-  const controllerRef = useRef<AbortController | null>(null);
   
   // 성능 모니터링 훅 사용
   const { startStreaming, endStreaming } = usePerformance();
@@ -41,9 +40,6 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
 
     // 성능 모니터링 시작
     startStreaming();
-
-    const ac = new AbortController(); 
-    controllerRef.current = ac;
 
     try {
       // Lambda 직접 호출 모드에서는 일반 채팅 사용
@@ -89,10 +85,6 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
   }
 
   const cancel = useCallback(() => { 
-    if (controllerRef.current) {
-      controllerRef.current.abort();
-      controllerRef.current = null;
-    }
     setLoading(false);
     endStreaming();
   }, [endStreaming]);
@@ -100,9 +92,6 @@ export function useChat(init: { major: string; subField: string; suggestCount?: 
   // 컴포넌트 언마운트 시 정리
   useEffect(() => {
     return () => {
-      if (controllerRef.current) {
-        controllerRef.current.abort();
-      }
       endStreaming();
     };
   }, [endStreaming]);
