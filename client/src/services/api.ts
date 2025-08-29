@@ -1,7 +1,8 @@
 // Re-export from the new API lib
 export * from "../lib/api";
-import { apiService } from "../lib/api";
+import apiModule from "../lib/api";
 
 // Legacy exports for backward compatibility
-export const apiClient = apiService;
-export default apiService;
+export const apiClient = apiModule;
+export const apiService = apiModule;
+export default apiModule;
