@@ -1,13 +1,10 @@
 // src/lib/api.ts
 
-// Backend Configuration
-const LAMBDA_URL = 'https://2kdtuncj36tas5twwm7dsgpz5y0bkfkw.lambda-url.us-east-1.on.aws';
-
 export const BASE = (
   import.meta.env.VITE_BACKEND_BASE || 
   import.meta.env.NEXT_PUBLIC_BACKEND_BASE || 
-  'https://2kdtuncj36tas5twwm7dsgpz5y0bkfkw.lambda-url.us-east-1.on.aws' // 임시 백엔드 주소
-).replace('/$/', '');
+  'https://h2yvhophi3.execute-api.us-east-1.amazonaws.com' // API Gateway URL
+).replace(/\/$/, '');
 
 export class ApiError extends Error {
   constructor(
@@ -50,6 +47,8 @@ export type SuggestionsResp = {
 function mustBase() {
   if (!BASE) throw new Error('백엔드 주소 미설정: .env(또는 Vercel env)의 VITE_BACKEND_BASE를 확인하세요.');
 }
+
+console.log('[API] Using backend URL:', BASE);
 
 // Utility function to generate trace ID
 function makeTraceId() {
@@ -96,12 +95,12 @@ function isSuggestionsResp(x: any): x is SuggestionsResp {
   return x && Array.isArray(x.suggestions);
 }
 
-// ✅ 수정: chat 함수를 빠른 응답 전용으로 변경
 export async function chat(body: ChatBody): Promise<ChatResp> {
   mustBase();
   
   try {
     console.log('[chat] Request payload:', body);
+    console.log('[chat] API Gateway URL:', `${BASE}/chat`);
     
     const r = await fetch(`${BASE}/chat`, {
       method: 'POST',
@@ -114,8 +113,8 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
         major: body.major,
         subField: body.subField,
         conversationId: body.conversationId,
-        followupMode: body.followupMode || "multi", // 동적으로 설정
-        suggestCount: body.suggestCount || 3        // 동적으로 설정
+        followupMode: body.followupMode || "multi",
+        suggestCount: body.suggestCount || 3
       }),
       credentials: 'omit',
     });
@@ -174,12 +173,12 @@ export async function chat(body: ChatBody): Promise<ChatResp> {
   }
 }
 
-// ✅ 수정: fetchSuggestions 함수를 별도로 호출
 export async function fetchSuggestions(body: SuggestionsBody): Promise<string[]> {
   mustBase();
   
   try {
     console.log('[suggestions] Request payload:', body);
+    console.log('[suggestions] API Gateway URL:', `${BASE}/suggestions`);
     
     const r = await fetch(`${BASE}/suggestions`, {
       method: 'POST',
@@ -231,6 +230,7 @@ export async function fetchSuggestions(body: SuggestionsBody): Promise<string[]>
 
 // 유틸: 백엔드 사용 전 점검용
 export async function ensureBackend() {
+  console.log('[API Gateway Mode]', true);
   console.log('[BASE from env]', import.meta.env.VITE_BACKEND_BASE || import.meta.env.NEXT_PUBLIC_BACKEND_BASE);
   console.log('[BASE after norm]', BASE);
   
@@ -254,7 +254,7 @@ export const api = {
   faq: async (subField: string) => ({ faqs: [] }), // Placeholder
 };
 
-// 스트리밍 채팅 함수 - 임시로 비활성화 (Lambda 직접 호출 모드에서는 사용하지 않음)
+// 스트리밍 채팅 함수 (API Gateway 모드)
 export function streamChat(params: {
   q: string; major: string; subField: string; conversationId: string;
   onStart?: (cid: string) => void;
