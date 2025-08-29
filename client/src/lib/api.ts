@@ -2,11 +2,12 @@
 
 // Lambda Direct Call Configuration (Temporary Hotfix)
 const LAMBDA_URL = 'https://2kdtuncj36tas5twwm7dsgpz5y0bkfkw.lambda-url.us-east-1.on.aws';
-const USE_LAMBDA_DIRECT = true; // Toggle flag for easy rollback
+const USE_LAMBDA_DIRECT = false; // Toggle flag for easy rollback
 
 export const BASE = (
   import.meta.env.VITE_BACKEND_BASE || 
-  import.meta.env.NEXT_PUBLIC_BACKEND_BASE || ''
+  import.meta.env.NEXT_PUBLIC_BACKEND_BASE || 
+  'https://2kdtuncj36tas5twwm7dsgpz5y0bkfkw.lambda-url.us-east-1.on.aws' // Lambda Function URL
 ).replace('/$/', '');
 
 export class ApiError extends Error {
