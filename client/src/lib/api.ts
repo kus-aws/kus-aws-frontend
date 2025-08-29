@@ -48,7 +48,7 @@ export async function chat(body: {
     return { 
       aiResponse: `죄송합니다. 서버 오류가 발생했습니다 (${r.status}). 잠시 후 다시 시도해주세요.`, 
       conversationId: body.conversationId ?? 'unknown', 
-      suggestions: [] 
+      suggestions: ['다른 질문 해보기', '기본 개념 설명', '예시 문제 풀이'] // 임시 테스트용
     };
   }
   
